@@ -1,0 +1,38 @@
+# Python
+#
+# Python bytecode files
+__pycache__/
+*.pyc
+*.pyd
+*.pyo
+*.egg-info/
+.eggs/
+
+# Environments
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Distribution / build
+dist/
+build/
+wheels/
+*.egg
+
+# IDEs and editors
+.idea/  # popular IDE Pycharm directory
+.vscode/ # popular editor VS Code directory
+
+# Testing
+.pytest_cache/
+.coverage
+
+# Miscellaneous
+.DS_Store # macOS system files
+pip-log.txt
+pip-delete-this-arg.txt
+htmlcov/
+.tox/
