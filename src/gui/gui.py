@@ -33,7 +33,7 @@ class wPrincipal(CTkFrame):
     def widgets(self):
         self.combobox_var = StringVar(value="Sin Seleccion")
 
-        CTkLabel(self, text="Acciones", font=self.fuenteTitulos).grid(row=1, column=1, sticky=NSEW, pady=50, padx=50)
+        CTkLabel(self, text="Acciones", font=self.fuenteTitulos).grid(row=1, column=1, sticky=NSEW, pady=50, padx=50) # type: ignore
         CTkButton(self, text='Cargar Imagen', font=self.fuenteTitulos, compound='left', command=self.upload_image).grid(row=2, column=1, sticky=NSEW, pady=10, padx=50)
 
         CTkLabel(self, text=" ", font=self.fuenteTitulos).grid(row=3, column=1, sticky=NSEW, pady=50, padx=50)

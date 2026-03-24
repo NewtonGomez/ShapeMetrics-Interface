@@ -2,6 +2,7 @@
 #
 # Python bytecode files
 __pycache__/
+**/__pycache__/
 *.pyc
 *.pyd
 *.pyo
@@ -36,3 +37,5 @@ pip-log.txt
 pip-delete-this-arg.txt
 htmlcov/
 .tox/
+.DS_Store
+**/.DS_Store
