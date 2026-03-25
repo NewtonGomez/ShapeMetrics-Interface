@@ -127,4 +127,4 @@ def find_outline(matrix: np.ndarray) -> dict:
                 # Interior pixel: all neighbors are foreground
                 outline[i][j] = 0
     
-    return {"contour": reorder_contour(outline), "perimeter": outline_count}
+    return {"contour": outline, "perimeter": outline_count}

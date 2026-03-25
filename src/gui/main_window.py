@@ -5,6 +5,7 @@ from src.logic import chain_codes
 from src.logic import tools
 # Importaciones necesarias para integrar Matplotlib con Tkinter
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.colors import ListedColormap
 from matplotlib.figure import Figure
 import datetime
 
@@ -36,6 +37,7 @@ class MainWindow(CTkFrame):
     def __init__(self, root):
         super().__init__(root)
         self.root = root
+        self.binary_matrix = None # Image data for processing
         self.title_font = ("Arial", 50)
         # Handle window close event
         root.protocol("WM_DELETE_WINDOW", self.close)
@@ -67,7 +69,7 @@ class MainWindow(CTkFrame):
         CTkLabel(self.actions_frame, text=" ", font=self.title_font).pack(pady=(20, 20))
 
         # View contour button
-        self.btn_outline = CTkButton(self.actions_frame, text="View Contour", font=self.title_font)
+        self.btn_outline = CTkButton(self.actions_frame, text="View Contour", font=self.title_font, command=self.process_outline)
         self.btn_outline.pack(pady=10, padx=20, fill="x")
         change_btn_state(self.btn_outline, state="disabled")
 
@@ -157,15 +159,14 @@ class MainWindow(CTkFrame):
         
         # User cancelled the dialog
         if not file_path:
-            print("Image load cancelled by user.")
+            self.log_message("Image load cancelled by user.")
             return
         
         # Process image and convert to binary
-        binary_matrix = tools.process_and_binarize(file_path)
-
+        self.binary_matrix = tools.process_and_binarize(file_path)
         # Validate result is a proper numpy array
-        if type(binary_matrix) != np.ndarray or binary_matrix is None:
-            self.log_message(f"Error loading image: {binary_matrix}")
+        if type(self.binary_matrix) != np.ndarray or self.binary_matrix is None:
+            self.log_message(f"Error loading image: {self.binary_matrix}")
             return
         
         # Enable all processing buttons
@@ -175,40 +176,73 @@ class MainWindow(CTkFrame):
         change_btn_state(self.btn_descriptor, state="normal")
         change_btn_state(self.btn_compressor, state="normal")
         change_btn_state(self.combobox_chain_class, state="normal")
-        self.display_image_on_canvas(binary_matrix)
+        self.display_on_canvas(self.binary_matrix)
 
-    def display_image_on_canvas(self, binary_image):
+    def process_outline(self):
         """
-        Render binary image on matplotlib canvas embedded in the GUI.
+        Calculate the contour and overlay it in red on the loaded image.
         """
-        # Destroy previous canvas if user loads a new image
+        if self.binary_matrix is None:
+            return
+            
+        # Get contour dictionary from logic module
+        outline_data = tools.find_outline(self.binary_matrix)
+        
+        contour_matrix = outline_data["contour"]
+        perimeter = outline_data["perimeter"]
+        
+        # Display combining base matrix and overlay matrix in red
+        self.display_on_canvas(
+            self.binary_matrix, 
+            overlay_matrix=contour_matrix, 
+            overlay_color="red", # You can change this color easily
+            title=f"Image Contour (Perimeter: {perimeter})"
+        )
+        
+        self.log_message(f"Contour displayed in red. Perimeter: {perimeter}")
+
+    def display_on_canvas(self, base_matrix, overlay_matrix=None, overlay_color="red", title="Image"):
+        """
+        Render a base binary matrix and an optional color overlay onto the canvas.
+        """
+        # Clear existing canvas
         if self.canvas_matplotlib:
             self.canvas_matplotlib.get_tk_widget().destroy()
-        
-        # Hide placeholder message
+            
         self.label_canvas_placeholder.pack_forget()
 
-        # Create matplotlib figure
+        # Setup figure and colors (keeping the dark background)
         fig = Figure(figsize=(5, 4), dpi=100)
-        
-        # Set background colors to match dark theme (#2B2B2B)
-        fig.patch.set_facecolor('#2B2B2B')
+        fig.patch.set_facecolor('#2B2B2B') 
         
         ax = fig.add_subplot(111)
         ax.set_facecolor('#2B2B2B')
         
-        # Display binary matrix with grayscale colormap
-        ax.imshow(binary_image, cmap="gray", vmin=0, vmax=1)
+        # 1. DRAW BASE IMAGE (Grayscale)
+        # Background is black (0), Object is white (1)
+        ax.imshow(base_matrix, cmap="gray", vmin=0, vmax=1)
         
-        # Remove axis labels and ticks for clean appearance
-        ax.axis('off')
+        # 2. DRAW OVERLAY IMAGE (Contour in Red)
+        if overlay_matrix is not None:
+            # Create a custom colormap:
+            # 0 (no contour) will be transparent
+            # 1 (contour) will be the specified overlay_color (red)
+            # In RGBA: (red, green, blue, alpha/transparency)
+            colors = [(0, 0, 0, 0), overlay_color] 
+            custom_cmap = ListedColormap(colors)
+            
+            # Layer the contour over the base image
+            ax.imshow(overlay_matrix, cmap=custom_cmap, vmin=0, vmax=1)
+        
+        # Final canvas setup
+        ax.axis('off') 
+        ax.set_title(title, color="white")
         fig.tight_layout()
 
-        # Embed matplotlib figure in CustomTkinter frame
+        # Embed into CustomTkinter Frame
         self.canvas_matplotlib = FigureCanvasTkAgg(fig, master=self.frame_canvas)
         self.canvas_matplotlib.draw()
         
-        # Pack widget to fill available space
         tk_widget = self.canvas_matplotlib.get_tk_widget()
         tk_widget.pack(fill="both", expand=True)
 
