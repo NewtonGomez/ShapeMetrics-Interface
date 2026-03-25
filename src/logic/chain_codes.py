@@ -2,6 +2,7 @@ import numpy as np
 from src.logic import tools
 
 def chain_f4(binary_img):
+    print(binary_img)
     """
     Generate 4-directional Freeman chain code by tracing object contour.
     """

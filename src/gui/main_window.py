@@ -1,4 +1,5 @@
 import inspect
+import tkinter as tk
 import numpy as np
 from customtkinter import *
 from src.logic import chain_codes
@@ -17,7 +18,7 @@ def list_chain_codes(module):
     functions = inspect.getmembers(module, inspect.isfunction)
     
     # Filter out private/internal functions (those starting with _)
-    return [name for name, _ in functions if not name.startswith('_')]
+    return {name.upper(): func for name, func in functions if not name.startswith('_')}
 
 def change_btn_state(button, state):
     """
@@ -38,11 +39,42 @@ class MainWindow(CTkFrame):
         super().__init__(root)
         self.root = root
         self.binary_matrix = None # Image data for processing
+        self.cc_functions = list_chain_codes(chain_codes)
         self.title_font = ("Arial", 50)
         # Handle window close event
         root.protocol("WM_DELETE_WINDOW", self.close)
         self.text_font = ("Arial", 20)
+        self.create_menu_bar()
         self.create_widgets()
+
+    def create_menu_bar(self):
+        self.menu_bar = tk.Menu(self, name='apple')
+
+        self.m_files = tk.Menu(self.menu_bar, tearoff=0)
+        self.m_files.add_command(label="Load Image",
+                                  command=self.upload_image)
+        self.m_files.add_command(label="Load Chain Code")
+        self.m_files.add_separator()
+        self.m_files.add_command(label="Save Chain Code")
+        self.m_files.add_command(label="Save Histogram")
+        self.menu_bar.add_cascade(menu=self.m_files, label="Files")
+
+        self.m_tools = tk.Menu(self.menu_bar, tearoff=0)
+        self.m_tools.add_command(label="Calc Contour",
+                                 command=self.process_outline)
+        self.m_tools.add_command(label="Calc Descriptor")
+        self.m_tools.add_separator()
+        self.m_t_cc = tk.Menu(self.m_tools, tearoff=0)
+        for key in list(self.cc_functions.keys()):
+            self.m_t_cc.add_command(label=key)
+        self.m_tools.add_cascade(menu=self.m_t_cc, label="Chain Codes")
+        self.m_tools.add_command(label="Generate Histogram")
+        self.menu_bar.add_cascade(menu=self.m_tools, label="Tools")
+        
+        self.m_help = tk.Menu(self.menu_bar, tearoff=0)
+        self.menu_bar.add_cascade(menu=self.m_help, label="Help")
+
+        self.root.config(menu = self.menu_bar)
 
     def create_widgets(self):
         """
@@ -74,7 +106,7 @@ class MainWindow(CTkFrame):
         change_btn_state(self.btn_outline, state="disabled")
 
         # Chain code type selector dropdown
-        self.combobox_chain_class = CTkComboBox(self.actions_frame, values=list_chain_codes(chain_codes),
+        self.combobox_chain_class = CTkComboBox(self.actions_frame, values=list(self.cc_functions.keys()),
                                          command=self.on_combobox_change, variable=self.combobox_var,
                                          fg_color="#3B8ED0", border_color="#3B8ED0", button_color="#3B8ED0",
                                          text_color="white", dropdown_text_color="white", dropdown_fg_color="#3B8ED0",
@@ -84,7 +116,7 @@ class MainWindow(CTkFrame):
         change_btn_state(self.combobox_chain_class, state="disabled")
 
         # Generate chain code button
-        self.btn_chain_generator = CTkButton(self.actions_frame, text="Generate Chain", font=self.title_font)
+        self.btn_chain_generator = CTkButton(self.actions_frame, text="Generate Chain", font=self.title_font, command=self.generate_chain)
         self.btn_chain_generator.pack(pady=10, padx=20, fill="x")
         change_btn_state(self.btn_chain_generator, state="disabled")
 
@@ -118,7 +150,7 @@ class MainWindow(CTkFrame):
 
         # Log output area for messages and status
         self.textbox_log = CTkTextbox(self.visualization_frame, width=800, height=200, corner_radius=10,
-                                         border_width=2, border_color="gray", font=("Consolas", 12))
+                                         border_width=2, border_color="gray", font=("Consolas", 25))
         self.textbox_log.grid(row=1, column=0, sticky="ew", padx=20, pady=(0, 20))
         
         # Set log to read-only by default
@@ -252,8 +284,12 @@ class MainWindow(CTkFrame):
         """
         chain_type = self.combobox_var.get()
         # Only proceed if a valid chain type is selected
-        if chain_type != "No Selection":
-            print(chain_type)
+        if chain_type == "No Selection":
+            self.log_message("No code chain selected")
+            return
+        
+        ccf = self.cc_functions[chain_type.upper()]
+        print(ccf(self.binary_matrix))
 
     def close(self):
         """
