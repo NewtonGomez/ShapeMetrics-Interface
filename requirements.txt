@@ -1,0 +1,14 @@
+# ShapeMetrics-Interface Project Dependencies
+# Python 3.8+
+
+# GUI Framework
+customtkinter==5.2.2
+
+# Numerical Computing
+numpy==2.2.6
+
+# Image Processing
+Pillow==12.0.0
+
+# Data Visualization
+matplotlib==3.10.7

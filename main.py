@@ -1,22 +1,29 @@
 import customtkinter
-from src.gui.gui import wPrincipal
+from src.gui.main_window import MainWindow
 
 if __name__ == "__main__":
     from PIL import Image, ImageTk
 
-    customtkinter.set_appearance_mode("dark") # O "light"
+    # Set dark theme (alternative: "light")
+    customtkinter.set_appearance_mode("dark")
+    # Load custom color theme from JSON configuration
     customtkinter.set_default_color_theme("assets/json/custom_theme.json")
+    
+    # Create root window
     root = customtkinter.CTk()
-    #customtkinter.set_appearance_mode("light")  # Cambiar a tema claro
-    ico = Image.open("assets/img/Logo_UAA__cropped_.ico")
-    photo = ImageTk.PhotoImage(ico)
-    # Crear una ventana raíz (root) para la aplicación
+    
+    # Load and set application icon
+    icon = Image.open("assets/img/Logo_UAA__cropped_.ico")
+    photo = ImageTk.PhotoImage(icon)
     root.title("SHAPEMETRICS")
     root.iconphoto(False, photo)
-    # Configurar las dimensiones de la ventana raíz
-    # Configurar la ventana para que esté en modo pantalla completa
+    
+    # Set window dimensions
     root.geometry('1400x900')
-    app = wPrincipal(root)
-    # Empaquetar la instancia de 'wLogin' en la ventana raíz para mostrarla
+    
+    # Create and display main application window
+    app = MainWindow(root)
     app.pack(fill='both', expand='True')
+    
+    # Start application event loop
     root.mainloop()

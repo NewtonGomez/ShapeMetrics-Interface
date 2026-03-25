@@ -3,13 +3,11 @@ from src.logic import tools
 
 def chain_f4(binary_img):
     """
-    Generate 4-directional Freeman chain code by tracing the contour.
-    Directions: 0=right, 1=down, 2=left, 3=up
+    Generate 4-directional Freeman chain code by tracing object contour.
     """
     def find_start_point(img):
         """
-        Find the starting pixel on the contour:
-        One with background above or to the left.
+        Find starting point: first border pixel with background adjacent.
         """
         padded = np.pad(img, 1, 'constant', constant_values=0)
 
@@ -21,7 +19,8 @@ def chain_f4(binary_img):
                     if padded[y - 1, x] == 0 or padded[y, x - 1] == 0:
                         return x, y
         return None
-    # Direction vectors mapping
+    
+    # Direction vectors: 0=right, 1=down, 2=left, 3=up
     directions = {
         0: (1, 0),   # Right
         1: (0, 1),   # Down
@@ -41,7 +40,7 @@ def chain_f4(binary_img):
 
     chain = []
 
-    # Trace the contour
+    # Trace contour until returning to start point
     for _ in range(10000):
         dx, dy = directions[current_dir]
         x += dx
@@ -49,28 +48,28 @@ def chain_f4(binary_img):
 
         chain.append(current_dir)
 
-        # Return to start: contour complete
+        # Contour complete when returning to start
         if (x, y) == (start_x, start_y):
             break
 
-        # Try turning left first
+        # Try turning left first (counterclockwise)
         current_dir = (current_dir + 3) % 4
 
-        # Find next valid direction in contour
+        # Find next valid direction
         for _ in range(4):
             dx, dy = directions[current_dir]
 
-            # Select pixel to check based on current direction
-            if current_dir == 0:      # Right: check pixel at current position
+            # Select pixel to check based on direction
+            if current_dir == 0:      # Right: check current position
                 px, py = x, y
-            elif current_dir == 1:    # Down: check pixel to the left
+            elif current_dir == 1:    # Down: check left neighbor
                 px, py = x - 1, y
-            elif current_dir == 2:    # Left: check pixel diagonally
+            elif current_dir == 2:    # Left: check diagonal
                 px, py = x - 1, y - 1
-            else:                     # Up: check pixel above
+            else:                     # Up: check top neighbor
                 px, py = x, y - 1
 
-            # If pixel is part of object, move in this direction
+            # If pixel is foreground, move in this direction
             if padded[py, px] == 255:
                 break
 
@@ -81,15 +80,16 @@ def chain_f4(binary_img):
 
 def chain_f8(binary_img):
     """
-    Generate 8-directional Freeman chain code using OpenCV contour extraction.
+    Generate 8-directional Freeman chain code using contour extraction.
     """
+    # Get contour from image using outline detection
     contour = tools.find_outline(binary_img)
-    contour = contour["contorno"]
+    contour = contour["contour"]
 
     if contour is None:
         return []
 
-    # 8-neighborhood direction mapping: (dy, dx) -> direction_code
+    # 8-directional mapping: (dy, dx) -> direction_code
     directions = {
         (0, 1): 0,    # Right
         (1, 1): 1,    # Down-right
@@ -102,11 +102,13 @@ def chain_f8(binary_img):
     }
 
     chain = []
-    # Compare each point with its successor
+    
+    # Process each contour point and encode direction to next point
     for i in range(len(contour)):
         current_point = contour[i][0]
         next_point = contour[(i + 1) % len(contour)][0]
 
+        # Calculate displacement vector
         dy = next_point[1] - current_point[1]
         dx = next_point[0] - current_point[0]
 
@@ -114,7 +116,7 @@ def chain_f8(binary_img):
         if (dy, dx) in directions:
             chain.append(directions[(dy, dx)])
 
-    # Rotate to align starting point
+    # Rotate chain to align starting point
     if chain:
         chain = chain[-1:] + chain[:-1]
 
@@ -122,12 +124,12 @@ def chain_f8(binary_img):
 
 def chain_af8(binary_img):
     """
-    Convert F8 to AF8 (absolute-relative) using relative angle differences.
+    Convert F8 to AF8 using relative direction differences.
     """
-    # Lookup table: (previous_direction, current_direction) -> relative_turn
-
+    # Generate F8 chain first
     f8 = chain_f8(binary_img)
 
+    # Lookup table: (previous_direction, current_direction) -> relative_turn
     lookup_table = {
         (0, 0): 0, (0, 1): 1, (0, 2): 2, (0, 3): 3, (0, 4): 4, (0, 5): 5, (0, 6): 6, (0, 7): 7,
         (1, 0): 7, (1, 1): 0, (1, 2): 1, (1, 3): 2, (1, 4): 3, (1, 5): 4, (1, 6): 5, (1, 7): 6,
@@ -139,31 +141,32 @@ def chain_af8(binary_img):
         (7, 0): 1, (7, 1): 2, (7, 2): 3, (7, 3): 4, (7, 4): 5, (7, 5): 6, (7, 6): 7, (7, 7): 0
     }
 
-    # Compute relative direction at each step
+    # Compute relative direction at each step using lookup table
     return [lookup_table[(f8[i - 1], f8[i])] for i in range(len(f8))]
 
 def chain_vcc(binary_img):
     """
-    Encode direction changes in F4.
-    Codes: 0=no vertical/horizontal change, 1=horizontal change, 2=turn/vertical change
+    Encode vertical and horizontal direction changes in F4 chain.
     """
+    # Generate F4 chain first
     f4 = chain_f4(binary_img)
-    # Lookup table: (previous_direction, current_direction) -> change_type
+    
+    # Lookup table: (previous_dir, current_dir) -> change_type
     lookup_table = {
-        (0, 0): 0, (0, 1): 1, (0, 3): 2,  # Direction 0 (right)
-        (1, 0): 2, (1, 1): 0, (1, 2): 1,  # Direction 1 (down)
-        (2, 1): 2, (2, 2): 0, (2, 3): 1,  # Direction 2 (left)
-        (3, 0): 1, (3, 2): 2, (3, 3): 0   # Direction 3 (up)
+        (0, 0): 0, (0, 1): 1, (0, 3): 2,  # From right: 0=continue, 1=turn up/down, 2=turn left/opposite
+        (1, 0): 2, (1, 1): 0, (1, 2): 1,  # From down: 0=continue, 1=turn left/right, 2=turn up/opposite
+        (2, 1): 2, (2, 2): 0, (2, 3): 1,  # From left: 0=continue, 1=turn up/down, 2=turn right/opposite
+        (3, 0): 1, (3, 2): 2, (3, 3): 0   # From up: 0=continue, 1=turn left/right, 2=turn down/opposite
     }
 
-    # Classify each change using the lookup table
+    # Classify each direction change using lookup table
     return [lookup_table.get((f4[i - 1], f4[i]), 0) for i in range(len(f4))]
 
-def chain_3ot(binary_img, f4):
+def chain_3ot(binary_img):
     """
     Classify direction changes relative to a reference direction.
-    Codes: 0=no change, 1=relative turn, 2=reversal
     """
+    f4 = chain_f4(binary_img)
     if len(f4) < 2:
         return []
 
@@ -172,18 +175,18 @@ def chain_3ot(binary_img, f4):
     previous = f4[0]
     direction_changed = False
 
-    # Process each direction in the chain
+    # Process each direction transition in the chain
     for i in range(1, len(f4)):
         current_dir = f4[i]
 
         if current_dir == previous:
-            chain.append(0)  # No change
+            chain.append(0)  # No change: same direction
         else:
             if not direction_changed:
-                chain.append(2)  # First change is a reversal
+                chain.append(2)  # First direction change
                 direction_changed = True
             elif current_dir == reference:
-                chain.append(1)  # Return to reference
+                chain.append(1)  # Return to reference direction
                 reference = previous
             elif (current_dir - reference) % 4 == 2:
                 chain.append(2)  # Opposite direction
@@ -194,7 +197,7 @@ def chain_3ot(binary_img, f4):
 
         previous = current_dir
 
-    # Handle circular closure
+    # Handle circular closure at chain end
     current_dir = f4[0]
 
     if current_dir == previous:
@@ -212,15 +215,15 @@ def chain_3ot(binary_img, f4):
 
 
 # =========================================
-# USAGE EXAMPLE
+# USAGE EXAMPLES
 # =========================================
 # binary_img = ...  # Binary image matrix (0 or 255)
 
 # f4_chain = chain_f4(binary_img)
 # f8_chain = chain_f8(binary_img)
-# af8_chain = chain_af8(f8_chain)
-# vcc_chain = chain_vcc(f4_chain)
-# chain_3ot_result = chain_3ot(f4_chain)
+# af8_chain = chain_af8(binary_img)
+# vcc_chain = chain_vcc(binary_img)
+# chain_3ot_result = chain_3ot(binary_img, f4_chain)
 
 # print("F4:", ''.join(map(str, f4_chain)))
 # print("F8:", ''.join(map(str, f8_chain)))
