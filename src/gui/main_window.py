@@ -208,6 +208,7 @@ class MainWindow(CTkFrame):
         change_btn_state(self.btn_descriptor, state="normal")
         change_btn_state(self.btn_compressor, state="normal")
         change_btn_state(self.combobox_chain_class, state="normal")
+        tools.save_matrix_to_csv(self.binary_matrix, "./datatest.csv")
         self.display_on_canvas(self.binary_matrix)
 
     def process_outline(self):
@@ -287,9 +288,13 @@ class MainWindow(CTkFrame):
         if chain_type == "No Selection":
             self.log_message("No code chain selected")
             return
-        
-        ccf = self.cc_functions[chain_type.upper()]
-        print(ccf(self.binary_matrix))
+        try:
+            ccf = self.cc_functions[chain_type.upper()]
+            code = ccf(self.binary_matrix)
+            self.log_message(f"Codigo de Cadena: {code}")
+        except Exception as error:
+            print(error)
+            self.log_message("Error")   
 
     def close(self):
         """

@@ -50,7 +50,7 @@ def process_and_binarize(filename, threshold=128):
             np_array = np.array(gray_img)
             
             # Convert to binary: 1 if pixel > threshold, 0 otherwise
-            binary_array = (np_array > threshold).astype(int)
+            binary_array = ((np_array > threshold)*255).astype(int)
             
             return binary_array
     except Exception as e:
