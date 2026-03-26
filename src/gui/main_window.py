@@ -208,7 +208,6 @@ class MainWindow(CTkFrame):
         change_btn_state(self.btn_descriptor, state="normal")
         change_btn_state(self.btn_compressor, state="normal")
         change_btn_state(self.combobox_chain_class, state="normal")
-        tools.save_matrix_to_csv(self.binary_matrix, "./datatest.csv")
         self.display_on_canvas(self.binary_matrix)
 
     def process_outline(self):
@@ -293,8 +292,7 @@ class MainWindow(CTkFrame):
             code = ccf(self.binary_matrix)
             self.log_message(f"Codigo de Cadena: {code}")
         except Exception as error:
-            print(error)
-            self.log_message("Error")   
+            self.log_message(f"Error: {error}")   
 
     def close(self):
         """

@@ -120,7 +120,7 @@ def find_outline(matrix: np.ndarray) -> dict:
                                matrix[i - 1, j] + matrix[i + 1, j])
             
             # Edge pixel: has at least one background neighbor
-            if neighborhood_sum < 4:
+            if neighborhood_sum < 1020:
                 outline[i][j] = 1
                 outline_count += 1
             else:
