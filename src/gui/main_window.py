@@ -39,6 +39,9 @@ class MainWindow(CTkFrame):
         super().__init__(root)
         self.root = root
         self.binary_matrix = None # Image data for processing
+        self.actual_chain = []
+        self.actual_probability = {}
+        self.actual_entropy = 0.0
         self.cc_functions = list_chain_codes(chain_codes)
         self.title_font = ("Arial", 50)
         # Handle window close event
@@ -120,13 +123,18 @@ class MainWindow(CTkFrame):
         self.btn_chain_generator.pack(pady=10, padx=20, fill="x")
         change_btn_state(self.btn_chain_generator, state="disabled")
 
+        # New button generate histogram (v)
+        self.btn_histogram = CTkButton(self.actions_frame, text="Histogram", font=self.title_font, command=self.generate_histogram)
+        self.btn_histogram.pack(pady=10, padx=20, fill="x")
+        change_btn_state(self.btn_histogram, state="disabled")
+
         # Calculate descriptor button
-        self.btn_descriptor = CTkButton(self.actions_frame, text="Descriptor", font=self.title_font)
+        self.btn_descriptor = CTkButton(self.actions_frame, text="Descriptor", font=self.title_font, command=self.generate_descriptor)
         self.btn_descriptor.pack(pady=10, padx=20, fill="x")
         change_btn_state(self.btn_descriptor, state="disabled")
 
         # Compress chain button
-        self.btn_compressor = CTkButton(self.actions_frame, text="Compression", font=self.title_font)
+        self.btn_compressor = CTkButton(self.actions_frame, text="Compression", font=self.title_font, command=self.arithmetic_compression)
         self.btn_compressor.pack(pady=10, padx=20, fill="x")
         change_btn_state(self.btn_compressor, state="disabled")
 
@@ -205,6 +213,7 @@ class MainWindow(CTkFrame):
         self.log_message(f"Image loaded: {file_path}")
         change_btn_state(self.btn_outline, state="normal")
         change_btn_state(self.btn_chain_generator, state="normal")
+        change_btn_state(self.btn_histogram, state="normal")
         change_btn_state(self.btn_descriptor, state="normal")
         change_btn_state(self.btn_compressor, state="normal")
         change_btn_state(self.combobox_chain_class, state="normal")
@@ -279,6 +288,46 @@ class MainWindow(CTkFrame):
         tk_widget = self.canvas_matplotlib.get_tk_widget()
         tk_widget.pack(fill="both", expand=True)
 
+        #here another change by v
+    def display_histogram_plot(self, frequency_dict):
+        """
+        Plot the histogram in the right side
+        """
+        # clear the canvas, remove the previous image
+        if self.canvas_matplotlib:
+            self.canvas_matplotlib.get_tk_widget().destroy()
+            
+        self.label_canvas_placeholder.pack_forget()
+
+        #set up the matplotlib figure 
+        fig = Figure(figsize=(5, 4), dpi=100)
+        fig.patch.set_facecolor('#2B2B2B') 
+        
+        ax = fig.add_subplot(111)
+        ax.set_facecolor('#2B2B2B')
+        
+        # extract and organize the data plotting
+        symbols_ = [str(sym) for sym in sorted(frequency_dict.keys())]
+        frequency_ = [frequency_dict[sym] for sym in sorted(frequency_dict.keys())]
+        
+        # Draw the bars
+        ax.bar(symbols_, frequency_, color='#6ea6e7', edgecolor='white')
+        
+        # Extract the data 
+        ax.set_title("Histogram of the chain", color="white", fontsize=14)
+        ax.set_xlabel("Symbol", color="white", fontsize=12)
+        ax.set_ylabel("Frequency", color="white", fontsize=12)
+        ax.tick_params(axis='x', colors='white')
+        ax.tick_params(axis='y', colors='white')
+        
+        fig.tight_layout()
+
+        self.canvas_matplotlib = FigureCanvasTkAgg(fig, master=self.frame_canvas)
+        self.canvas_matplotlib.draw()
+        
+        tk_widget = self.canvas_matplotlib.get_tk_widget()
+        tk_widget.pack(fill="both", expand=True)
+
     def generate_chain(self):
         """
         Generate chain code using selected method.
@@ -290,11 +339,71 @@ class MainWindow(CTkFrame):
             return
         try:
             ccf = self.cc_functions[chain_type.upper()]
+            self.actual_chain = ccf(self.binary_matrix)
+            lenght = len (self.actual_chain)
             code = ccf(self.binary_matrix)
-            self.log_message(f"Codigo de Cadena: {code}")
+            self.log_message(f"Chain: {self.actual_chain}")
+            self.log_message(f"Longitud de la cadena: {lenght}")
         except Exception as error:
             print(error)
             self.log_message("Error")   
+
+    def generate_histogram(self):
+        """
+        generate the histogram
+        """
+        if not self.actual_chain:
+            self.log_message("Error")
+            return
+            
+        frequency, probability, entropy = tools.calculate_histogram_entropy(self.actual_chain)
+        
+        # We save the probabilities
+        self.actual_probability = probability
+        self.actual_entropy = entropy
+        
+        # Assemble the text of the histogram
+        #Eh, esto nomas es para ver si los datos estan bien, ojo ahí cuate
+        texto_hist = "\n HISTOGRAM DATA \n"
+        texto_hist += "Symbol | Frequency | Mean\n"
+        texto_hist += "-" * 40 + "\n"
+        for sym in sorted(frequency.keys()):
+            texto_hist += f"   {sym}\t|     {frequency[sym]}\t     |   {probability[sym]:.4f}\n"
+        texto_hist += "-" * 40
+        
+        # print the table
+        self.log_message(texto_hist)
+        
+        # Draw the graphics
+        self.display_histogram_plot(frequency)
+    
+    def generate_descriptor(self):
+        """
+        Here we show the Shannon entropy
+        """
+        if not self.actual_probability:
+            self.log_message("Error")
+            return
+        
+        self.log_message(f"Shannon Entropy")
+        self.log_message(f"Result: {self.actual_entropy: .4f} bits/symbol")
+
+    def arithmetic_compression(self):
+        """
+        Calculate arithmetic compression
+        """   
+        if not hasattr(self,'actual_chain') or not self.actual_chain or not hasattr(self, 'actual_probability') or not self.actual_probability: 
+            self.log_message("Error")
+            return
+       
+        comp_data = tools.lenght_compression_arithmetic(self.actual_chain, self.actual_probability)
+
+        self.log_message(f" Arithmetic compression ")
+        self.log_message(f"Length without compression: {comp_data['bits_uncompressed']} bits/symbol")
+        self.log_message(f"Average length (Arithmetic): {comp_data['avg_bits']:.4f} bits/symbol")
+        self.log_message(f"Compression ratio: {comp_data['ratio']:.4f}")
+        self.log_message(f"Estimated savings: {comp_data['saving_percent']:.2f}%")
+
 
     def close(self):
         """

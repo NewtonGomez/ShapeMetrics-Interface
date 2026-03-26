@@ -1,5 +1,6 @@
 import numpy as np
 from src.logic import tools
+#import tools
 
 def chain_f4(binary_img):
     print(binary_img)
@@ -231,3 +232,25 @@ def chain_3ot(binary_img):
 # print("AF8:", ''.join(map(str, af8_chain)))
 # print("VCC:", ''.join(map(str, vcc_chain)))
 # print("3OT:", ''.join(map(str, chain_3ot_result)))
+
+
+
+if __name__=="__main__":
+    import cv2
+    img_gray = cv2.imread(r'C:\Users\delga\Documents\IMAGE_PRUEBA\apple-13.gif', cv2.IMREAD_GRAYSCALE)
+    if img_gray is None:
+        print("Error: Could not read image file. Check file path.")
+        # Apply a fixed threshold to create a binary image# Pixels with a value > 127 are set to 255 (white), others to 0 (black)# The function returns a tuple: (threshold_value, binary_image)thresh_value = 127max_value = 255ret, img_binary = cv2.threshold(img_gray, thresh_value, max_value, cv2.THRESH_BINARY)
+    else:
+        thresh_value = 127
+        max_value = 255
+        ret, img_binary = cv2.threshold(img_gray, thresh_value, max_value, cv2.THRESH_BINARY)
+         # Display the result (optional)    cv2.imshow('Original Grayscale Image', img_gray)
+        #cv2.imshow('Binary Image', img_binary)
+        #cv2.waitKey(0)
+        #cv2.destroyAllWindows()
+        print(img_binary)
+        tools.save_matrix_to_csv(img_gray, "./prueba.csv")
+        print(chain_af8(img_gray))
+    # Save the binary image (optional)    cv2.imwrite('binary_image.png', img_binary)
+    

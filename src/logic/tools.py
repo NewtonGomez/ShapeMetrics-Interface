@@ -1,5 +1,7 @@
 import numpy as np
 import os
+import math
+from collections import Counter
 from PIL import Image
 
 def reorder_contour(contour):
@@ -104,6 +106,7 @@ def find_outline(matrix: np.ndarray) -> dict:
     """
     Detect object outline/edges using neighborhood analysis.
     """
+    #rows, cols = matrix.shape
     rows, cols = matrix.shape
     outline_count = 0
     outline = np.zeros((rows, cols), dtype=int)
@@ -128,3 +131,59 @@ def find_outline(matrix: np.ndarray) -> dict:
                 outline[i][j] = 0
     
     return {"contour": outline, "perimeter": outline_count}
+
+#Entropia e histogramas
+def calculate_histogram_entropy(chain):
+    """
+    Calculate the frequency, probability and the Shannon entropy
+    Returns: (frequency, probabilities, entropy)
+    """
+    if not chain:
+        return {},{}, 0.0
+    
+    total_symbol = len(chain)
+    frequency = dict(Counter(chain))
+    probability = {sym: freq / total_symbol for sym, freq in frequency.items()}
+    entropy = -sum(
+        p * math.log2(p)
+        for p in probability.values()
+        if p > 0 
+        )
+
+    return frequency, probability, entropy
+
+#Aguante que este no se si esta bien
+def lenght_compression_arithmetic(chain, probability):
+    """
+    Calculate the average length in bits/symbol (Shannon) {
+    and the estimated arithmetic compression ratio.
+    Returns: dict con avg_bits, bits_uncompressed, ratio, saving_percent
+    """
+    if not chain or not probability:
+        return {"avg_bits": 0.0, "bits_uncompressed": 0, "ratio": 1.0, "saving_percent": 0.0}
+
+    total_symbol = len(chain)
+    total_bits = sum(
+        -math.log2(probability[sym])
+        for sym in chain
+        if probability.get(sym, 0) > 0
+    )
+    #Average bits/symbols de la shannon entropy cuando la probabilidad
+    # fue estimada de esta misma cadena
+    avg_bits = total_bits / total_symbol
+
+    # Bits requeridos sin compresion longitud uniforme 
+    num_symbols = len(set(chain))
+    bits_uncompressed = math.ceil(math.log2(num_symbols)) if num_symbols > 1 else 1
+    # ratio de compresion: fraccion del tamaño original que se conserva despues de comprimir
+    ratio = avg_bits / bits_uncompressed
+    #porcentaje de bits eliminados respecto al tamaño og sin comprimir
+    saving = (1 - ratio) * 100
+
+    return {
+        "avg_bits": avg_bits,
+        "bits_uncompressed": bits_uncompressed,
+        "ratio": ratio,
+        "saving_percent": saving
+    }
+#Enrique si ves esto, perdón esta dlv
