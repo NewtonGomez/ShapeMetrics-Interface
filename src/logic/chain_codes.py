@@ -2,7 +2,6 @@ import numpy as np
 from src.logic import tools
 
 def chain_f4(binary_img):
-    print(binary_img)
     """
     Generate 4-directional Freeman chain code by tracing object contour.
     """
@@ -109,7 +108,6 @@ def chain_f8(binary_img):
         next_point = contorno[(i + 1) % len(contorno)][0]
 
         # Calculate displacement vector
-        print(current_point, type(current_point))
         dy = next_point[1] - current_point[1]
         dx = next_point[0] - current_point[0]
 
