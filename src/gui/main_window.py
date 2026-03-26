@@ -133,7 +133,7 @@ class MainWindow(CTkFrame):
         self.btn_descriptor.pack(pady=10, padx=20, fill="x")
         change_btn_state(self.btn_descriptor, state="disabled")
 
-        # Compress chain button
+        # Compress chain button 
         self.btn_compressor = CTkButton(self.actions_frame, text="Compression", font=self.title_font, command=self.arithmetic_compression)
         self.btn_compressor.pack(pady=10, padx=20, fill="x")
         change_btn_state(self.btn_compressor, state="disabled")
@@ -402,6 +402,17 @@ class MainWindow(CTkFrame):
         self.log_message(f"Compression ratio: {comp_data['ratio']:.4f}")
         self.log_message(f"Estimated savings: {comp_data['saving_percent']:.2f}%")
 
+        #Huffman compression
+        avg_len, huffman_code = tools.length_huffman_compression(self.actual_chain, self.actual_probability)
+        
+        self.log_message(f"Huffman Compression")
+        self.log_message("Generated tree")
+
+        for sym in sorted (huffman_code.keys()):
+            self.log_message(f"[{sym}] -> {huffman_code[sym]}")
+        
+        self.log_message("-" * 30)
+        self.log_message(f"Average length: {avg_length: .4f} bits")
 
     def close(self):
         """

@@ -3,6 +3,7 @@ import os
 import math
 from collections import Counter
 from PIL import Image
+import heapq
 
 def reorder_contour(contour):
     """
@@ -186,4 +187,50 @@ def lenght_compression_arithmetic(chain, probability):
         "ratio": ratio,
         "saving_percent": saving
     }
-#Enrique si ves esto, perdón esta dlv
+
+#me dio dislexia arriba y en otras partes del código porque yo escribo "lenght"
+def length_huffman_compression(chain, probability_dict):
+    """
+    Calculate the average length using the Huffman tree.
+    Return: average_length, dictionary_with_codes
+    """
+    if not chain or not probability_dict:
+        return 0.0, {}
+
+    #We prepare the heap (tree data structure) probability, symbol and bits
+    # An unique id avoid errors in heap when probabilities tie
+    heap = []
+    counter_id = 0
+    for sym, prob in probability_dict.items():
+        if prob > 0:
+            heapq.heappush(heap, [prob, counter_id, [[sym, ""]]])
+            counter_id += 1
+
+    #Tree Huffman development
+    while len(heap) > 1:
+        low = heapq.heappop(heap)
+        up = heapq.heappop(heap)
+
+        #We asign "0" to the left branch and "1" to the right branch
+        for pair in low[2]:
+            pair[1] = '0' + pair[1]
+        for pair in up[2]:
+            pair[1] = '1' + pair[1]
+
+        #we join the branches and bring it to the heap
+        new_prob = low[0] + up[0]
+        combinate_node = low[2] + up[2]
+
+        heapq.heappush(heap, [new_prob, counter_id, combinate_node])
+        counter_id += 1
+
+    #Bring final results
+    final_node = heapq.heappop(heap)[2]
+    mean_length = 0.0
+    huffman_code = {}
+
+    for symbol, bits in final_node:
+        mean_length += probability_dict[symbol] * len(bits)
+        huffman_code[symbol] = bits
+
+    return mean_length, huffman_code    
