@@ -217,7 +217,6 @@ class MainWindow(CTkFrame):
         change_btn_state(self.btn_descriptor, state="normal")
         change_btn_state(self.btn_compressor, state="normal")
         change_btn_state(self.combobox_chain_class, state="normal")
-        tools.save_matrix_to_csv(self.binary_matrix, "./datatest.csv")
         self.display_on_canvas(self.binary_matrix)
 
     def process_outline(self):
@@ -345,8 +344,7 @@ class MainWindow(CTkFrame):
             self.log_message(f"Chain: {self.actual_chain}")
             self.log_message(f"Longitud de la cadena: {lenght}")
         except Exception as error:
-            print(error)
-            self.log_message("Error")   
+            self.log_message(f"Error: {error}")   
 
     def generate_histogram(self):
         """

@@ -3,7 +3,6 @@ from src.logic import tools
 #import tools
 
 def chain_f4(binary_img):
-    print(binary_img)
     """
     Generate 4-directional Freeman chain code by tracing object contour.
     """
@@ -86,9 +85,8 @@ def chain_f8(binary_img):
     """
     # Get contour from image using outline detection
     contour = tools.find_outline(binary_img)
-    contour = contour["contour"]
-
-    if contour is None:
+    contorno = contour["contour"]
+    if contorno is None:
         return []
 
     # 8-directional mapping: (dy, dx) -> direction_code
@@ -106,9 +104,9 @@ def chain_f8(binary_img):
     chain = []
     
     # Process each contour point and encode direction to next point
-    for i in range(len(contour)):
-        current_point = contour[i][0]
-        next_point = contour[(i + 1) % len(contour)][0]
+    for i in range(len(contorno)):
+        current_point = contorno[i][0]
+        next_point = contorno[(i + 1) % len(contorno)][0]
 
         # Calculate displacement vector
         dy = next_point[1] - current_point[1]
