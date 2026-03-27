@@ -412,7 +412,7 @@ class MainWindow(CTkFrame):
             self.log_message(f"[{sym}] -> {huffman_code[sym]}")
         
         self.log_message("-" * 30)
-        self.log_message(f"Average length: {avg_length: .4f} bits")
+        self.log_message(f"Average length: {avg_len: .4f} bits")
 
     def close(self):
         """
