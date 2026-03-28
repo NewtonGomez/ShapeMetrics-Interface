@@ -45,6 +45,7 @@ class MainWindow(CTkFrame):
         self.actual_probability = {}
         self.img_perimeter = None
         self.actual_entropy = 0.0
+        self.img_histogram = None
         self.cc_functions = list_chain_codes(chain_codes)
         self.title_font = ("Arial", 50)
         # Handle window close event
@@ -62,7 +63,7 @@ class MainWindow(CTkFrame):
         self.m_files.add_command(label="Load Chain Code")
         self.m_files.add_separator()
         self.m_files.add_command(label="Save Chain Code", command=self.save_chain_code)
-        self.m_files.add_command(label="Save Histogram")
+        self.m_files.add_command(label="Save Histogram", command=self.save_histogram)
         self.menu_bar.add_cascade(menu=self.m_files, label="Files")
 
         self.m_tools = tk.Menu(self.menu_bar, tearoff=0)
@@ -211,7 +212,6 @@ class MainWindow(CTkFrame):
         change_btn_state(self.btn_outline, state="normal")
         change_btn_state(self.btn_chain_generator, state="normal")
         change_btn_state(self.btn_descriptor, state="normal")
-        change_btn_state(self.btn_compressor, state="normal")
         change_btn_state(self.combobox_chain_class, state="normal")
         self.display_on_canvas(self.binary_matrix)
 
@@ -255,11 +255,11 @@ class MainWindow(CTkFrame):
         ax = fig.add_subplot(111)
         ax.set_facecolor('#2B2B2B')
         
-        # 1. DRAW BASE IMAGE (Grayscale)
+        # DRAW BASE IMAGE (Grayscale)
         # Background is black (0), Object is white (1)
         ax.imshow(base_matrix, cmap="gray", vmin=0, vmax=1)
         
-        # 2. DRAW OVERLAY IMAGE (Contour in Red)
+        # DRAW OVERLAY IMAGE (Contour in Red)
         if overlay_matrix is not None:
             # Create a custom colormap:
             # 0 (no contour) will be transparent
@@ -322,9 +322,11 @@ class MainWindow(CTkFrame):
         try:
             # Call the internal display function with both dicts
             self.display_histogram_plot(frequency, probabilities)
-            self.log_message(f" Statistics dashboard generated")
+            self.log_message(f"Statistics dashboard generated")
         except Exception as e:
             self.log_message(f"Display Error: {e}")
+
+        change_btn_state(self.btn_compressor, state="normal")
 
     def display_histogram_plot(self, frequency_dict, probability_dict):
         """
@@ -335,6 +337,7 @@ class MainWindow(CTkFrame):
         self.label_canvas_placeholder.pack_forget()
 
         fig = tools.plot_histograms(frequency_dict, probability_dict)
+        self.img_histogram = fig
         
         fig.patch.set_facecolor('#2B2B2B')
         for ax in fig.get_axes():
@@ -378,7 +381,7 @@ class MainWindow(CTkFrame):
         huffman_report = (
             f"Average length chain code by arithmetic compression: {avg_bits_ari:.4f} \n"
             f"  Huffman Compression \n"
-            f"  Generated tree: \n {tree_str} \n"
+            f"  Generated tree: \n{tree_str} \n"
             f"  Average length: {avg_len: .4f} bits/symbol \n"
             f"  Total accumulated bits: {total_bits: .4f} bits"
         )
@@ -393,7 +396,7 @@ class MainWindow(CTkFrame):
             self.log_message("Error: No chain code to export. Generate it first.")
             return
         if not hasattr(self, "img_perimeter") or self.img_perimeter is None:
-            self.log_message("Error: No perimeter of image")
+            self.log_message("Error: No perimeter of image.")
             return
 
         # Open the native 'Save As' dialog
@@ -431,6 +434,46 @@ class MainWindow(CTkFrame):
             
         except Exception as e:
             self.log_message(f"Error saving file: {e}")
+
+    def save_histogram(self):
+        """
+        Export the currently displayed Matplotlib figure as an image file.
+        """
+        # Check if there is a figure to save
+        if not getattr(self, 'img_histogram', None):
+            self.log_message("Error: No histogram generated to save.")
+            return
+
+        # Open the native Save As dialog
+        file_path = filedialog.asksaveasfilename(
+            title="Save Histogram",
+            defaultextension=".png",
+            filetypes=[
+                ("PNG Image", "*.png"),
+                ("PDF Document", "*.pdf"),
+                ("JPEG Image", "*.jpg"),
+                ("All files", "*.*")
+            ],
+            initialfile="histogram_metrics.png"
+        )
+
+        if not file_path:
+            return
+
+        # Save the figure preserving the dark theme background
+        try:
+            self.img_histogram.savefig(
+                file_path, 
+                facecolor=self.img_histogram.get_facecolor(), 
+                edgecolor='none',
+                bbox_inches='tight' # Removes extra blank padding
+            )
+            
+            file_name = os.path.basename(file_path)
+            self.log_message(f"Success: Histogram saved as {file_name}")
+            
+        except Exception as e:
+            self.log_message(f"Error saving histogram: {e}")
 
     def close(self):
         """
