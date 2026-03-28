@@ -322,7 +322,7 @@ class MainWindow(CTkFrame):
         try:
             # Call the internal display function with both dicts
             self.display_histogram_plot(frequency, probabilities)
-            self.log_message(f" Statistics dashboard")
+            self.log_message(f" Statistics dashboard generated")
         except Exception as e:
             self.log_message(f"Display Error: {e}")
 
@@ -359,34 +359,30 @@ class MainWindow(CTkFrame):
             self.log_message("Error: First generate the chain code")
 
         entropy = tools.calculate_entropy(self.actual_chain)
-        self.log_message(F"SHANNON ENTROPY")
-        self.log_message(f"Result: {entropy: .4} bits")
+        self.log_message(F"SHANNON ENTROPY \n Result: {entropy: .4} bits")
     
 
     def arithmetic_compression(self):
         """
         Calculate arithmetic compression
         """   
-        if not hasattr(self,'actual_chain') or not self.actual_chain or not hasattr(self, 'actual_probability') or not self.actual_probability:            
-            self.log_message("Error")
-            return
+        if not getattr(self, 'actual_chain', None) or not getattr(self, 'actual_probability', None):            
+            self.log_message("Error: Missing chain code or probability data.")
+            return 
         #Call the mathematical function to return a single number
         avg_bits_ari = tools.lenght_compression_arithmetic(self.actual_chain, self.actual_probability)
-        #Show the average bits
-        report = f"Average length chain code by arithmetic compression: {avg_bits_ari:.4f}"
-        self.log_message(report)
-
         #Huffman compression
         avg_len, total_bits, huffman_code = tools.length_huffman_compression(self.actual_chain, self.actual_probability)        
-        self.log_message(f"Huffman Compression")
-        self.log_message("Generated tree")
-
-        for sym in sorted (huffman_code.keys()):
-            self.log_message(f"[{sym}] -> {huffman_code[sym]}")
+        tree_str = "\n".join([f"[{sym}] -> {huffman_code[sym]}" for sym in sorted(huffman_code.keys())])
         
-        self.log_message("-" * 30)
-        self.log_message(f"Average length: {avg_len: .4f} symbols")
-        self.log_message(f"Total accumulated bits: {total_bits: .4f} bits")
+        huffman_report = (
+            f"Average length chain code by arithmetic compression: {avg_bits_ari:.4f} \n"
+            f"  Huffman Compression \n"
+            f"  Generated tree: \n {tree_str} \n"
+            f"  Average length: {avg_len: .4f} bits/symbol \n"
+            f"  Total accumulated bits: {total_bits: .4f} bits"
+        )
+        self.log_message(huffman_report)
 
     def save_chain_code(self):
         """
