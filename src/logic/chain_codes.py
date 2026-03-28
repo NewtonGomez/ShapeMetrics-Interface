@@ -86,9 +86,10 @@ def chain_f8(binary_img):
     # Get contour from image using outline detection
     contour = tools.find_outline(binary_img)
     contorno = contour["contour"]
-    if contorno is None:
+    if contorno is None or len(contorno) == 0:
+    #if contorno is None:
         return []
-
+    contorno = np.array(contorno).reshape(-1,2)
     # 8-directional mapping: (dy, dx) -> direction_code
     directions = {
         (0, 1): 0,    # Right
@@ -105,12 +106,17 @@ def chain_f8(binary_img):
     
     # Process each contour point and encode direction to next point
     for i in range(len(contorno)):
-        current_point = contorno[i][0]
-        next_point = contorno[(i + 1) % len(contorno)][0]
+        current_point = contorno[i]
+        next_point = contorno[(i + 1) % len(contorno)]
 
         # Calculate displacement vector
-        dy = next_point[1] - current_point[1]
-        dx = next_point[0] - current_point[0]
+        #dy = next_point[1] - current_point[1]
+        #dx = next_point[0] - current_point[0]
+        cx, cy = current_point
+        nx, ny = next_point
+        dy  = ny - cy
+        dx = nx - cx
+        
 
         # Map displacement to direction code
         if (dy, dx) in directions:

@@ -4,6 +4,7 @@ import math
 from collections import Counter
 from PIL import Image
 import heapq
+import matplotlib.pyplot as plt
 
 def reorder_contour(contour):
     """
@@ -133,14 +134,88 @@ def find_outline(matrix: np.ndarray) -> dict:
     
     return {"contour": outline, "perimeter": outline_count}
 
-#Entropia e histogramas
-def calculate_histogram_entropy(chain):
+def plot_histograms(frequency_dict, probability_dict):
     """
-    Calculate the frequency, probability and the Shannon entropy
-    Returns: (frequency, probabilities, entropy)
+    Generates two stacked, plots.
+    """
+    if not frequency_dict or not probability_dict:
+        print("Error")
+        return
+
+    # Extract and sort symbols for the X-axis
+    symbols = sorted(list(frequency_dict.keys()))
+    
+    # Extract frequencies and probabilities matching the sorted symbols
+    frequencies = [frequency_dict[sym] for sym in symbols]
+    probabilities = [probability_dict[sym] for sym in symbols]
+
+    plt.style.use('default')
+    
+    # Create two subplots stacked vertically (sharex=True aligns the X-axes)
+    fig, (ax_freq, ax_prob) = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
+
+    # Custom background color 
+    fig.patch.set_facecolor('white') 
+    ax_freq.set_facecolor('white')
+    ax_prob.set_facecolor('white')
+
+    # Colors
+    primary_color = '#4A90E2' # Standard solid blue for academic charts
+    text_color = '#000000'    # Pure black for maximum readability
+    grid_color = '#E0E0E0'    # Light gray for a subtle grid
+
+    # Frquency
+    ax_freq.bar(symbols, frequencies, width=0.8, facecolor=primary_color, alpha=1.0, edgecolor=primary_color, linewidth=0.5)
+    
+    # Titles and labels 
+    ax_freq.set_title("1. Symbol Frequency (Count)", fontsize=14, fontweight='bold', color=text_color, y=1.02)
+    ax_freq.set_ylabel("Frequency (Count)", color=text_color, fontsize=13, fontweight='bold')
+    ax_freq.tick_params(axis='y', labelcolor=text_color, colors=text_color)
+    
+    # Configure a minimal grid
+    ax_freq.grid(True, linestyle='--', color=grid_color, alpha=0.7)
+    # Hide top/right spines
+    ax_freq.spines['top'].set_visible(False)
+    ax_freq.spines['right'].set_visible(False)
+
+    # Bottom plot
+    # Draw line with markers (points) using the same primary color
+    ax_prob.plot(symbols, probabilities, color=primary_color, marker='o', markersize=9, linewidth=2.5, markerfacecolor=primary_color, markeredgecolor=primary_color, markeredgewidth=1)
+    
+    # Titles and labels for Probability plot
+    ax_prob.set_title("2. Symbol Probability Distribution", fontsize=14, fontweight='bold', color=text_color, y=1.02)
+    ax_prob.set_ylabel("Probability", color=text_color, fontsize=13, fontweight='bold')
+    ax_prob.tick_params(axis='y', labelcolor=text_color, colors=text_color)
+    
+    # Common X-axis label
+    ax_prob.set_xlabel("Chain Code Symbol", fontsize=13, fontweight='bold', color=text_color)
+    ax_prob.set_xticks(symbols)
+    ax_prob.tick_params(axis='x', labelcolor=text_color, colors=text_color)
+
+    # Configure a minimal grid for the bottom plot
+    ax_prob.grid(True, linestyle='--', color=grid_color, alpha=0.7)
+    # Hide top/right spines
+    ax_prob.spines['top'].set_visible(False)
+    ax_prob.spines['right'].set_visible(False)
+    
+    # Ensure the Y-axis for probability starts at 0
+    ax_prob.set_ylim(bottom=0)
+    plt.suptitle("Chain Code Analysis: Frequency and Probability Dashboard", fontsize=16, fontweight='bold', color=text_color, y=0.98)
+    fig.tight_layout(rect=[0, 0.03, 1, 0.96]) 
+
+    plt.suptitle("Chain Code Analysis", fontsize=16, fontweight='bold', color=text_color, y=0.98)
+    fig.tight_layout(rect=[0, 0.03, 1, 0.96])
+    
+    return fig
+
+
+def calculate_entropy(chain):
+    """
+    Calculate the Shannon entropy
+    Returns: The Shannon entropy limit
     """
     if not chain:
-        return {},{}, 0.0
+        return 0.0
     
     total_symbol = len(chain)
     frequency = dict(Counter(chain))
@@ -151,51 +226,47 @@ def calculate_histogram_entropy(chain):
         if p > 0 
         )
 
-    return frequency, probability, entropy
+    return entropy
 
-#Aguante que este no se si esta bien
-def lenght_compression_arithmetic(chain, probability):
+def lenght_compression_arithmetic(chain, probability_dict):
     """
-    Calculate the average length in bits/symbol (Shannon) {
-    and the estimated arithmetic compression ratio.
-    Returns: dict con avg_bits, bits_uncompressed, ratio, saving_percent
+    Calculate the theoretical average length of the arithmetic compression.
+    Step-by-step mathematical implementation (Shannon's Entropy limit).
+    Based on G. Langdon and J. Rissanen (1981).
     """
-    if not chain or not probability:
-        return {"avg_bits": 0.0, "bits_uncompressed": 0, "ratio": 1.0, "saving_percent": 0.0}
+    # If the chain or the dictionary is empty, return 0.0
+    if not chain or not probability_dict:
+        return 0.0
 
-    total_symbol = len(chain)
-    total_bits = sum(
-        -math.log2(probability[sym])
-        for sym in chain
-        if probability.get(sym, 0) > 0
-    )
-    #Average bits/symbols de la shannon entropy cuando la probabilidad
-    # fue estimada de esta misma cadena
-    avg_bits = total_bits / total_symbol
+    average_length = 0.0
 
-    # Bits requeridos sin compresion longitud uniforme 
-    num_symbols = len(set(chain))
-    bits_uncompressed = math.ceil(math.log2(num_symbols)) if num_symbols > 1 else 1
-    # ratio de compresion: fraccion del tamaño original que se conserva despues de comprimir
-    ratio = avg_bits / bits_uncompressed
-    #porcentaje de bits eliminados respecto al tamaño og sin comprimir
-    saving = (1 - ratio) * 100
+    # Iterate through the dictionary symbol by symbol
+    for symbol in probability_dict:
+        prob = probability_dict[symbol]
+        
+        # Probability must be greater than 0 for the logarithm to exist
+        if prob > 0:
+            # Apply the mathematical change of base rule for base 2 logarithm:
+            # log2(P) = ln(P) / ln(2)
+            log2_prob = math.log(prob) / math.log(2)
+            
+            # Multiply the probability by its negative logarithm
+            symbol_calculation = prob * (-log2_prob)
+            
+            # Add it to the total (Summation)
+            average_length = average_length + symbol_calculation
 
-    return {
-        "avg_bits": avg_bits,
-        "bits_uncompressed": bits_uncompressed,
-        "ratio": ratio,
-        "saving_percent": saving
-    }
+    return average_length
 
-#me dio dislexia arriba y en otras partes del código porque yo escribo "lenght"
+#me dio dislexia arriba y en otras partes del código porque yo escribo "lenght" en lugar de length y no me acuerdo en donde
+
 def length_huffman_compression(chain, probability_dict):
     """
     Calculate the average length using the Huffman tree.
     Return: average_length, dictionary_with_codes
     """
     if not chain or not probability_dict:
-        return 0.0, {}
+        return 0.0, 0, {}
 
     #We prepare the heap (tree data structure) probability, symbol and bits
     # An unique id avoid errors in heap when probabilities tie
@@ -227,10 +298,16 @@ def length_huffman_compression(chain, probability_dict):
     #Bring final results
     final_node = heapq.heappop(heap)[2]
     mean_length = 0.0
+    total_bits = 0
     huffman_code = {}
 
+    total_symbols = len(chain)
+    
     for symbol, bits in final_node:
         mean_length += probability_dict[symbol] * len(bits)
         huffman_code[symbol] = bits
 
-    return mean_length, huffman_code    
+        freq = round (probability_dict[symbol]* total_symbols)
+        total_bits += freq * len(bits)
+
+    return mean_length, total_bits, huffman_code    
