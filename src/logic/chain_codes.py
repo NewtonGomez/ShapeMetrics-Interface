@@ -1,7 +1,21 @@
 import numpy as np
 from src.logic import tools
 #import tools
+def find_start_point(binary_img):
+        """
+        Find starting point: first border pixel with background adjacent.
+        """
+        padded = np.pad(binary_img, 1, 'constant', constant_values=0)
 
+        # Scan image for first valid border pixel
+        for y in range(1, padded.shape[0] - 1):
+            for x in range(1, padded.shape[1] - 1):
+                if padded[y, x] == 255:  # Foreground pixel
+                    # Check if background exists above or to the left
+                    if padded[y - 1, x] == 0 or padded[y, x - 1] == 0:
+                        return (x, y)
+        return None
+  
 def chain_f4(binary_img):
     """
     Generate 4-directional Freeman chain code by tracing object contour.
@@ -52,7 +66,6 @@ def chain_f4(binary_img):
         # Contour complete when returning to start
         if (x, y) == (start_x, start_y):
             break
-
         # Try turning left first (counterclockwise)
         current_dir = (current_dir + 3) % 4
 

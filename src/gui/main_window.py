@@ -10,6 +10,7 @@ from matplotlib.colors import ListedColormap
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 import datetime
+import json
 
 def list_chain_codes(module):
     """
@@ -42,6 +43,7 @@ class MainWindow(CTkFrame):
         self.binary_matrix = None # Image data for processing
         self.actual_chain = []
         self.actual_probability = {}
+        self.img_perimeter = None
         self.actual_entropy = 0.0
         self.cc_functions = list_chain_codes(chain_codes)
         self.title_font = ("Arial", 50)
@@ -59,7 +61,7 @@ class MainWindow(CTkFrame):
                                   command=self.upload_image)
         self.m_files.add_command(label="Load Chain Code")
         self.m_files.add_separator()
-        self.m_files.add_command(label="Save Chain Code")
+        self.m_files.add_command(label="Save Chain Code", command=self.save_chain_code)
         self.m_files.add_command(label="Save Histogram")
         self.menu_bar.add_cascade(menu=self.m_files, label="Files")
 
@@ -224,17 +226,17 @@ class MainWindow(CTkFrame):
         outline_data = tools.find_outline(self.binary_matrix)
         
         contour_matrix = outline_data["contour"]
-        perimeter = outline_data["perimeter"]
+        self.img_perimeter = outline_data["perimeter"]
         
         # Display combining base matrix and overlay matrix in red
         self.display_on_canvas(
             self.binary_matrix, 
             overlay_matrix=contour_matrix, 
             overlay_color="red", # You can change this color easily
-            title=f"Image Contour (Perimeter: {perimeter})"
+            title=f"Image Contour (Perimeter: {self.img_perimeter})"
         )
         
-        self.log_message(f"Contour displayed in red. Perimeter: {perimeter}")
+        self.log_message(f"Contour displayed in red. Perimeter: {self.img_perimeter}")
 
     def display_on_canvas(self, base_matrix, overlay_matrix=None, overlay_color="red", title="Image"):
         """
@@ -293,8 +295,7 @@ class MainWindow(CTkFrame):
         try:
             ccf = self.cc_functions[chain_type.upper()]
             self.actual_chain = ccf(self.binary_matrix)
-            lenght = len (self.actual_chain)
-            code = ccf(self.binary_matrix)
+            lenght = len(self.actual_chain)
             self.log_message(f"Chain: {self.actual_chain}")
             self.log_message(f"Length of the chain: {lenght}")
         except Exception as error:
@@ -386,6 +387,54 @@ class MainWindow(CTkFrame):
         self.log_message("-" * 30)
         self.log_message(f"Average length: {avg_len: .4f} symbols")
         self.log_message(f"Total accumulated bits: {total_bits: .4f} bits")
+
+    def save_chain_code(self):
+        """
+        Export the current chain code and metadata to a JSON file.
+        """
+        # Verify that there is data to save
+        if not hasattr(self, 'actual_chain') or self.actual_chain is None:
+            self.log_message("Error: No chain code to export. Generate it first.")
+            return
+        if not hasattr(self, "img_perimeter") or self.img_perimeter is None:
+            self.log_message("Error: No perimeter of image")
+            return
+
+        # Open the native 'Save As' dialog
+        file_path = filedialog.asksaveasfilename(
+            title="Save Chain Code",
+            defaultextension=".json",
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+            initialfile="chain_code_result.json"
+        )
+
+        # If the user cancels the dialog
+        if not file_path:
+            return
+
+        # Structure the metadata and data
+        data_to_save = {
+            "metadata": {
+                "export_date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "algorithm": self.combobox_var.get(),
+                # Retrieve the perimeter if it was saved during the outline process
+                "perimeter": getattr(self, 'img_perimeter'), 
+                "chain_length": len(self.actual_chain)
+            },
+            "chain_code": self.actual_chain
+        }
+
+        # Write to the file
+        try:
+            with open(file_path, 'w', encoding='utf-8') as json_file:
+                # indent=4 makes the JSON easily readable by humans
+                json.dump(data_to_save, json_file, indent=4)
+                
+            file_name = os.path.basename(file_path)
+            self.log_message(f"Success: Data exported to {file_name}")
+            
+        except Exception as e:
+            self.log_message(f"Error saving file: {e}")
 
     def close(self):
         """
