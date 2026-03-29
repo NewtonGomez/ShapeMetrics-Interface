@@ -645,14 +645,15 @@ class MainWindow(CTkFrame):
                 if function_name.startswith("DECODE_") and function_name.endswith("_TO_MATRIX"):
                     # Extract algorithm code (e.g., "F4" from "DECODE_F4_TO_MATRIX")
                     algorithm_code = function_name.replace("DECODE_", "").replace("_TO_MATRIX", "")
-                    decoder_registry[algorithm_code] = function_obj
+                    json_name = f"CHAIN_{algorithm_code}"
+                    decoder_registry[json_name] = function_obj
 
             # Reconstruct image using the appropriate decoder
             if algorithm_name in decoder_registry:
                 self.log_message(f"Reconstructing image using {algorithm_name} decoder...")
                 
                 # Special handling for 3OT (returns closure status)
-                if algorithm_name == "3OT":
+                if algorithm_name == "CHAIN_3OT":
                     reconstructed_image, is_properly_closed = decoder_registry[algorithm_name](chain_code)
                     if not is_properly_closed:
                         self.log_message("Warning: 3OT code did not close perfectly. Showing contour only.")
