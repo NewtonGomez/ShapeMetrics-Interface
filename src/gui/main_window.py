@@ -3,6 +3,7 @@ import tkinter as tk
 import numpy as np
 from customtkinter import *
 from src.logic import chain_codes
+from src.logic import decoding_functions
 from src.logic import tools
 # Importaciones necesarias para integrar Matplotlib con Tkinter
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
@@ -12,181 +13,243 @@ import matplotlib.pyplot as plt
 import datetime
 import json
 
-def list_chain_codes(module):
+def list_functions(module):
     """
-    Extract available chain code functions from a module.
+    Extract available functions from a module and normalize their names.
+    
+    Args:
+        module: The module to inspect for functions
+        
+    Returns:
+        dict: Dictionary with uppercase function names as keys and function objects as values
     """
-    # Get all functions from the module
+    # Extract all public functions (non-private, non-dunder) from the module
     functions = inspect.getmembers(module, inspect.isfunction)
     
-    # Filter out private/internal functions (those starting with _)
+    # Normalize to uppercase for consistent command matching, filter stdlib functions
     return {name.upper(): func for name, func in functions if not name.startswith('_')}
 
-def change_btn_state(button, state):
+def change_button_state(button, state):
     """
-    Update button state and adjust colors for disabled/enabled appearance.
+    Update button state and visual appearance.
+    
+    Args:
+        button: The CTkButton widget to modify
+        state (str): Either 'disabled' or 'normal'
     """
     if state == "disabled":
-        # Apply gray tones (light for light theme, dark for dark theme)
+        # Apply disabled appearance with gray-tone colors for both light/dark themes
         button.configure(state="disabled", fg_color=("#D1D1D1", "#3E3E3E"))
     else:
-        # Restore original blue color from theme configuration
+        # Restore enabled appearance with theme-consistent blue color
         button.configure(state="normal", fg_color=("#6ea6e7", "#4A90E2"))
 
 class MainWindow(CTkFrame):
     """
     Main application window with image processing and chain code generation interface.
+    Provides tools for loading images, computing chain codes, and analyzing shape descriptors.
     """
     def __init__(self, root):
         super().__init__(root)
         self.root = root
-        self.binary_matrix = None # Image data for processing
-        self.actual_chain = []
-        self.actual_probability = {}
-        self.img_perimeter = None
-        self.actual_entropy = 0.0
-        self.img_histogram = None
-        self.cc_functions = list_chain_codes(chain_codes)
+        
+        # Image processing data
+        self.binary_matrix = None  # Processed binary image as numpy array
+        self.current_chain = []    # Current chain code sequence
+        self.current_probability = {}  # Symbol probability distribution
+        self.image_perimeter = None  # Perimeter value computed from contour
+        self.current_entropy = 0.0  # Shannon entropy measurement
+        self.image_histogram = None  # Cached histogram figure for export
+        
+        # Function mappings and styling
+        self.chain_code_functions = list_functions(chain_codes)
         self.title_font = ("Arial", 50)
-        # Handle window close event
-        root.protocol("WM_DELETE_WINDOW", self.close)
         self.text_font = ("Arial", 20)
+        
+        # Setup event handlers
+        root.protocol("WM_DELETE_WINDOW", self.on_window_close)
+        
+        # Build interface
         self.create_menu_bar()
         self.create_widgets()
 
     def create_menu_bar(self):
+        """
+        Build the application menu bar with file, tools, and help menus.
+        """
         self.menu_bar = tk.Menu(self, name='apple')
 
-        self.m_files = tk.Menu(self.menu_bar, tearoff=0)
-        self.m_files.add_command(label="Load Image",
-                                  command=self.upload_image)
-        self.m_files.add_command(label="Load Chain Code")
-        self.m_files.add_separator()
-        self.m_files.add_command(label="Save Chain Code", command=self.save_chain_code)
-        self.m_files.add_command(label="Save Histogram", command=self.save_histogram)
-        self.menu_bar.add_cascade(menu=self.m_files, label="Files")
+        # FILE MENU - Image and data I/O operations
+        self.menu_files = tk.Menu(self.menu_bar, tearoff=0)
+        self.menu_files.add_command(label="Load Image", command=self.upload_image)
+        self.menu_files.add_command(label="Load Chain Code", command=self.load_chain_code)
+        self.menu_files.add_separator()
+        self.menu_files.add_command(label="Save Chain Code", command=self.save_chain_code)
+        self.menu_files.add_command(label="Save Histogram", command=self.save_histogram)
+        self.menu_bar.add_cascade(menu=self.menu_files, label="Files")
 
-        self.m_tools = tk.Menu(self.menu_bar, tearoff=0)
-        self.m_tools.add_command(label="Calc Contour",
-                                 command=self.process_outline)
-        self.m_tools.add_command(label="Calc Descriptor")
-        self.m_tools.add_separator()
-        self.m_t_cc = tk.Menu(self.m_tools, tearoff=0)
-        for key in list(self.cc_functions.keys()):
-            self.m_t_cc.add_command(label=key)
-        self.m_tools.add_cascade(menu=self.m_t_cc, label="Chain Codes")
-        self.m_tools.add_command(label="Generate Histogram", command=self.generate_histogram)
-        self.menu_bar.add_cascade(menu=self.m_tools, label="Tools")
-        self.m_help = tk.Menu(self.menu_bar, tearoff=0)
-        self.menu_bar.add_cascade(menu=self.m_help, label="Help")
+        # TOOLS MENU - Image processing and analysis operations
+        self.menu_tools = tk.Menu(self.menu_bar, tearoff=0)
+        self.menu_tools.add_command(label="Calc Contour", command=self.process_outline)
+        self.menu_tools.add_command(label="Calc Descriptor")
+        self.menu_tools.add_separator()
+        
+        # Chain Code submenu - dynamically populated with available algorithms
+        self.menu_tools_chains = tk.Menu(self.menu_tools, tearoff=0)
+        for algorithm_name in list(self.chain_code_functions.keys()):
+            self.menu_tools_chains.add_command(label=algorithm_name)
+        self.menu_tools.add_cascade(menu=self.menu_tools_chains, label="Chain Codes")
+        self.menu_tools.add_command(label="Generate Histogram", command=self.generate_histogram)
+        self.menu_bar.add_cascade(menu=self.menu_tools, label="Tools")
+        
+        # HELP MENU - Documentation and support
+        self.menu_help = tk.Menu(self.menu_bar, tearoff=0)
+        self.menu_bar.add_cascade(menu=self.menu_help, label="Help")
 
-        self.root.config(menu = self.menu_bar)
+        self.root.config(menu=self.menu_bar)
 
     def create_widgets(self):
         """
-        Build the user interface components and layout.
+        Build the UI layout with left action panel and right visualization area.
+        Initializes all buttons, dropdowns, and display components.
         """
-        self.combobox_var = StringVar(value="No Selection")
+        self.combobox_variable = StringVar(value="No Selection")
 
-        # Configure grid weights for responsive layout
+        # Configure responsive grid layout (column 1 expands horizontally)
         self.grid_columnconfigure(1, weight=1)
-        self.grid_rowconfigure(0, weight=1)  # Right panel expands vertically
+        self.grid_rowconfigure(0, weight=1)  # Main content area expands vertically
 
-        # Left sidebar for actions
+        # ======== LEFT SIDEBAR ========
+        # Control panel with action buttons and settings
         self.actions_frame = CTkFrame(self, width=220, corner_radius=0)
         self.actions_frame.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
         
-        # Actions panel header
+        # Panel header
         CTkLabel(self.actions_frame, text="Actions", font=self.title_font).pack(pady=(20, 30))
 
-        # Upload image button
-        self.btn_upload = CTkButton(self.actions_frame, text="Load Image", command=self.upload_image, font=self.title_font)
-        self.btn_upload.pack(pady=10, padx=20, fill="x")
+        # Load image button
+        self.button_upload = CTkButton(
+            self.actions_frame, text="Load Image", 
+            command=self.upload_image, font=self.title_font
+        )
+        self.button_upload.pack(pady=10, padx=20, fill="x")
         
-        # Spacing
+        # Vertical spacing
         CTkLabel(self.actions_frame, text=" ", font=self.title_font).pack(pady=(20, 20))
 
-        # View contour button
-        self.btn_outline = CTkButton(self.actions_frame, text="View Contour", font=self.title_font, command=self.process_outline)
-        self.btn_outline.pack(pady=10, padx=20, fill="x")
-        change_btn_state(self.btn_outline, state="disabled")
+        # Display contour overlay button
+        self.button_outline = CTkButton(
+            self.actions_frame, text="View Contour", 
+            font=self.title_font, command=self.process_outline
+        )
+        self.button_outline.pack(pady=10, padx=20, fill="x")
+        change_button_state(self.button_outline, state="disabled")
 
-        # Chain code type selector dropdown
-        self.combobox_chain_class = CTkComboBox(self.actions_frame, values=list(self.cc_functions.keys()),
-                                         command=self.on_combobox_change, variable=self.combobox_var,
-                                         fg_color="#3B8ED0", border_color="#3B8ED0", button_color="#3B8ED0",
-                                         text_color="white", dropdown_text_color="white", dropdown_fg_color="#3B8ED0",
-                                         corner_radius=6, border_width=2, height=60, font=self.title_font)
-        self.combobox_chain_class.set("No Selection")
-        self.combobox_chain_class.pack(pady=10, padx=20, fill="x")
-        change_btn_state(self.combobox_chain_class, state="disabled")
+        # Chain code algorithm selector dropdown
+        self.combobox_chain_type = CTkComboBox(
+            self.actions_frame, 
+            values=list(self.chain_code_functions.keys()),
+            command=self.on_chain_type_selected, 
+            variable=self.combobox_variable,
+            fg_color="#3B8ED0", border_color="#3B8ED0", button_color="#3B8ED0",
+            text_color="white", dropdown_text_color="white", dropdown_fg_color="#3B8ED0",
+            corner_radius=6, border_width=2, height=60, font=self.title_font
+        )
+        self.combobox_chain_type.set("No Selection")
+        self.combobox_chain_type.pack(pady=10, padx=20, fill="x")
+        change_button_state(self.combobox_chain_type, state="disabled")
 
-        # Generate chain code button
-        self.btn_chain_generator = CTkButton(self.actions_frame, text="Generate Chain", font=self.title_font, command=self.generate_chain)
-        self.btn_chain_generator.pack(pady=10, padx=20, fill="x")
-        change_btn_state(self.btn_chain_generator, state="disabled")
+        # Compute chain code button
+        self.button_chain_generator = CTkButton(
+            self.actions_frame, text="Generate Chain", 
+            font=self.title_font, command=self.generate_chain
+        )
+        self.button_chain_generator.pack(pady=10, padx=20, fill="x")
+        change_button_state(self.button_chain_generator, state="disabled")
 
-        # Calculate descriptor button
-        self.btn_descriptor = CTkButton(self.actions_frame, text="Descriptor", font=self.title_font, command=self.generate_entropy)
-        self.btn_descriptor.pack(pady=10, padx=20, fill="x")
-        change_btn_state(self.btn_descriptor, state="disabled")
+        # Compute shape descriptor button
+        self.button_descriptor = CTkButton(
+            self.actions_frame, text="Descriptor", 
+            font=self.title_font, command=self.generate_entropy
+        )
+        self.button_descriptor.pack(pady=10, padx=20, fill="x")
+        change_button_state(self.button_descriptor, state="disabled")
 
-        # Compress chain button 
-        self.btn_compressor = CTkButton(self.actions_frame, text="Compression", font=self.title_font, command=self.arithmetic_compression)
-        self.btn_compressor.pack(pady=10, padx=20, fill="x")
-        change_btn_state(self.btn_compressor, state="disabled")
+        # Compression analysis button
+        self.button_compressor = CTkButton(
+            self.actions_frame, text="Compression", 
+            font=self.title_font, command=self.arithmetic_compression
+        )
+        self.button_compressor.pack(pady=10, padx=20, fill="x")
+        change_button_state(self.button_compressor, state="disabled")
 
-        # Right panel for visualization
+        # ======== RIGHT VISUALIZATION PANEL ========
+        # Main display area for images and plots
         self.visualization_frame = CTkFrame(self)
         self.visualization_frame.grid(row=0, column=1, sticky="nsew", padx=10, pady=10)
-        self.visualization_frame.grid_rowconfigure(0, weight=1)  # Canvas area expands
-        self.visualization_frame.grid_columnconfigure(0, weight=1)
+        self.visualization_frame.grid_rowconfigure(0, weight=1)  # Plot area expands
+        self.visualization_frame.grid_columnconfigure(0, weight=1)  # Canvas expands horizontally
         
-        # Dedicated frame for matplotlib canvas
+        # Container for matplotlib embedded figure
         self.frame_canvas = CTkFrame(self.visualization_frame, fg_color="transparent")
         self.frame_canvas.grid(row=0, column=0, sticky="nsew", padx=20, pady=20)
         
-        # Initialize empty matplotlib canvas
+        # Cached matplotlib canvas widget
         self.canvas_matplotlib = None
         
-        # Placeholder message before image is loaded
-        self.label_canvas_placeholder = CTkLabel(self.frame_canvas, text="Load an image to visualize", 
-                                                    font=("Roboto", 18), text_color="gray")
+        # Placeholder label (hidden when plot is displayed)
+        self.label_canvas_placeholder = CTkLabel(
+            self.frame_canvas, text="Load an image to visualize", 
+            font=("Roboto", 18), text_color="gray"
+        )
         self.label_canvas_placeholder.pack(expand=True)
 
-        # Log output area for messages and status
-        self.textbox_log = CTkTextbox(self.visualization_frame, width=800, height=200, corner_radius=10,
-                                         border_width=2, border_color="gray", font=("Consolas", 25))
+        # System log output area
+        self.textbox_log = CTkTextbox(
+            self.visualization_frame, width=800, height=200, corner_radius=10,
+            border_width=2, border_color="gray", font=("Consolas", 25)
+        )
         self.textbox_log.grid(row=1, column=0, sticky="ew", padx=20, pady=(0, 20))
         
-        # Set log to read-only by default
+        # Read-only by default (manipulated via log_message method)
         self.textbox_log.configure(state="disabled")
         
-        # Initial welcome message
+        # Welcome message
         self.log_message("System initialized. Ready to process images.")
 
-    def on_combobox_change(self, choice):
+    def on_chain_type_selected(self, choice):
         """
-        Handle chain code type selection change.
+        Handle user selection of a chain code algorithm from the dropdown.
+        Logs the selection for debugging and reference.
         """
-        self.log_message(f"Chain code selected: {self.combobox_var.get()}")
+        selected_type = self.combobox_variable.get()
+        self.log_message(f"Chain code algorithm selected: {selected_type}")
 
     def log_message(self, message):
         """
-        Write timestamped message to the log display.
+        Append a timestamped message to the log display.
+        
+        Args:
+            message (str): The message to log
         """
+        # Temporarily enable editing to add new text
         self.textbox_log.configure(state="normal")
-        # Add timestamp prefix to each message
+        
+        # Prepend timestamp for chronological reference
         timestamp = datetime.datetime.now().strftime("[%H:%M:%S] ")
         self.textbox_log.insert("end", timestamp + message + "\n")
-        self.textbox_log.see("end")  # Auto-scroll to latest message
+        
+        # Auto-scroll to show the latest message
+        self.textbox_log.see("end")
+        
+        # Re-enable read-only mode
         self.textbox_log.configure(state="disabled")
 
     def upload_image(self):
         """
-        Open file dialog to load and process an image.
+        Load an image file via file dialog, binarize it, and enable processing.
         """
-        # Open file dialog filtered for image files
+        # Open native file chooser (filtered for image formats)
         file_path = filedialog.askopenfilename(
             title="Select image to process",
             filetypes=[
@@ -195,211 +258,271 @@ class MainWindow(CTkFrame):
             ]
         )
         
-        # User cancelled the dialog
+        # User cancelled the dialog without selecting a file
         if not file_path:
             self.log_message("Image load cancelled by user.")
             return
         
-        # Process image and convert to binary
+        # Process the image: load, convert to grayscale, and binarize
         self.binary_matrix = tools.process_and_binarize(file_path)
-        # Validate result is a proper numpy array
-        if type(self.binary_matrix) != np.ndarray or self.binary_matrix is None:
+        
+        # Validate the result is a valid numpy array
+        if not isinstance(self.binary_matrix, np.ndarray) or self.binary_matrix is None:
             self.log_message(f"Error loading image: {self.binary_matrix}")
             return
         
-        # Enable all processing buttons
+        # Successfully loaded: enable UI controls and display image
         self.log_message(f"Image loaded: {file_path}")
-        change_btn_state(self.btn_outline, state="normal")
-        change_btn_state(self.btn_chain_generator, state="normal")
-        change_btn_state(self.btn_descriptor, state="normal")
-        change_btn_state(self.combobox_chain_class, state="normal")
+        change_button_state(self.button_outline, state="normal")
+        change_button_state(self.button_chain_generator, state="normal")
+        change_button_state(self.button_descriptor, state="normal")
+        change_button_state(self.combobox_chain_type, state="normal")
+        
+        # Display the uploaded image
         self.display_on_canvas(self.binary_matrix)
+        self.log_message(f"Image dimensions: {self.binary_matrix.shape}")
 
     def process_outline(self):
         """
-        Calculate the contour and overlay it in red on the loaded image.
+        Compute and display the shape contour overlaid on the original image.
+        Calculates perimeter as a bonus metric.
         """
+        # Ensure an image has been loaded
         if self.binary_matrix is None:
             return
             
-        # Get contour dictionary from logic module
+        # Call image processing tool to extract contour
         outline_data = tools.find_outline(self.binary_matrix)
         
         contour_matrix = outline_data["contour"]
-        self.img_perimeter = outline_data["perimeter"]
+        self.image_perimeter = outline_data["perimeter"]
         
-        # Display combining base matrix and overlay matrix in red
+        # Render with red overlay for visual contrast
         self.display_on_canvas(
             self.binary_matrix, 
             overlay_matrix=contour_matrix, 
-            overlay_color="red", # You can change this color easily
-            title=f"Image Contour (Perimeter: {self.img_perimeter})"
+            overlay_color="red",
+            title=f"Image Contour (Perimeter: {self.image_perimeter})"
         )
         
-        self.log_message(f"Contour displayed in red. Perimeter: {self.img_perimeter}")
+        self.log_message(f"Contour displayed (red overlay). Perimeter: {self.image_perimeter}")
 
     def display_on_canvas(self, base_matrix, overlay_matrix=None, overlay_color="red", title="Image"):
         """
-        Render a base binary matrix and an optional color overlay onto the canvas.
+        Render a binary image with optional colored overlay onto the visualization canvas.
+        
+        Args:
+            base_matrix (np.ndarray): Base image to display (grayscale, 0-1 or 0-255)
+            overlay_matrix (np.ndarray, optional): Binary mask to overlay with color
+            overlay_color (str, optional): Color name or hex for overlay (default: 'red')
+            title (str, optional): Figure title (default: 'Image')
         """
-        # Clear existing canvas
+        # Destroy previous canvas if it exists
         if self.canvas_matplotlib:
             self.canvas_matplotlib.get_tk_widget().destroy()
             
+        # Hide placeholder message
         self.label_canvas_placeholder.pack_forget()
 
-        # Setup figure and colors (keeping the dark background)
+        # Create matplotlib figure with dark theme
         fig = Figure(figsize=(5, 4), dpi=100)
-        fig.patch.set_facecolor('#2B2B2B') 
+        fig.patch.set_facecolor('#2B2B2B')  # Dark gray background
         
         ax = fig.add_subplot(111)
         ax.set_facecolor('#2B2B2B')
         
-        # DRAW BASE IMAGE (Grayscale)
-        # Background is black (0), Object is white (1)
-        ax.imshow(base_matrix, cmap="gray", vmin=0, vmax=1)
+        # Draw the base image in grayscale (uint8: 0-255)
+        ax.imshow(base_matrix, cmap="gray", vmin=0, vmax=255)
         
-        # DRAW OVERLAY IMAGE (Contour in Red)
+        # Layer a colored overlay if provided
         if overlay_matrix is not None:
-            # Create a custom colormap:
-            # 0 (no contour) will be transparent
-            # 1 (contour) will be the specified overlay_color (red)
-            # In RGBA: (red, green, blue, alpha/transparency)
-            colors = [(0, 0, 0, 0), overlay_color] 
+            # Normalize overlay matrix to [0-1] range for proper colormap indexing
+            # This ensures: 0=transparent background, 1=colored contour pixels
+            #normalized_overlay = overlay_matrix.astype(float) / 255.0
+            
+            # Create custom colormap with transparent and colored states
+            # RGBA format: (red, green, blue, alpha)
+            # Index 0 = transparent (no contour), Index 1 = colored (contour line)
+            colors = [(0, 0, 0, 0), overlay_color]
             custom_cmap = ListedColormap(colors)
             
-            # Layer the contour over the base image
-            ax.imshow(overlay_matrix, cmap=custom_cmap, vmin=0, vmax=1)
+            # Display normalized overlay using [0-1] color mapping
+            ax.imshow(overlay_matrix, cmap=custom_cmap, vmin=0, vmax=255)
         
-        # Final canvas setup
-        ax.axis('off') 
+        # Configure axes appearance
+        ax.axis('off')  # Hide axes and ticks
         ax.set_title(title, color="white")
         fig.tight_layout()
 
-        # Embed into CustomTkinter Frame
+        # Embed matplotlib figure into CustomTkinter frame
         self.canvas_matplotlib = FigureCanvasTkAgg(fig, master=self.frame_canvas)
         self.canvas_matplotlib.draw()
         
+        # Add to widget hierarchy and expand
         tk_widget = self.canvas_matplotlib.get_tk_widget()
         tk_widget.pack(fill="both", expand=True)
 
     def generate_chain(self):
         """
-        Generate chain code using selected method.
+        Compute and display chain code using the selected algorithm.
         """
-        chain_type = self.combobox_var.get()
-        # Only proceed if a valid chain type is selected
-        if chain_type == "No Selection":
-            self.log_message("No code chain selected")
+        # Get user's selected chain code algorithm
+        chain_type_name = self.combobox_variable.get()
+        
+        # Validate selection
+        if chain_type_name == "No Selection":
+            self.log_message("Please select a chain code algorithm first.")
             return
+            
         try:
-            ccf = self.cc_functions[chain_type.upper()]
-            self.actual_chain = ccf(self.binary_matrix)
-            lenght = len(self.actual_chain)
-            self.log_message(f"Chain: {self.actual_chain}")
-            self.log_message(f"Length of the chain: {lenght}")
+            # Retrieve the corresponding algorithm function
+            algorithm_function = self.chain_code_functions[chain_type_name.upper()]
+            
+            # Execute the algorithm on the loaded binary image
+            self.current_chain = algorithm_function(self.binary_matrix)
+            chain_length = len(self.current_chain)
+            
+            # Log the results
+            self.log_message(f"Chain code generated: {self.current_chain}")
+            self.log_message(f"Chain length: {chain_length} symbols")
+            
         except Exception as error:
-            self.log_message(f"Error: {error}")   
+            self.log_message(f"Error generating chain: {error}")   
 
     def generate_histogram(self):
         """
-        Calculates stats and triggers the embedded UI plot.
+        Compute symbol frequency distribution and display histogram plot.
+        Enables compression analysis after calculation.
         """
-        if not hasattr(self, 'actual_chain') or not self.actual_chain:
-            self.log_message("Error")
+        # Ensure a chain code has been generated
+        if not hasattr(self, 'current_chain') or not self.current_chain:
+            self.log_message("Error: Generate a chain code first.")
             return
 
-        self.log_message("Generating Histograms")        
+        self.log_message("Computing frequency distribution and generating histograms...")        
 
-        # Calculate data
-        total_symbol = len(self.actual_chain)
+        # Calculate frequency and probability from current chain
+        total_symbols = len(self.current_chain)
         from collections import Counter
-        frequency = dict(Counter(self.actual_chain))
-        probabilities = {sym: freq / total_symbol for sym, freq in frequency.items()}
+        frequency_distribution = dict(Counter(self.current_chain))
+        probability_distribution = {sym: freq / total_symbols for sym, freq in frequency_distribution.items()}
         
-        self.actual_probability = probabilities # Save for compression
+        # Cache probabilities for later use in compression analysis
+        self.current_probability = probability_distribution
         
         try:
-            # Call the internal display function with both dicts
-            self.display_histogram_plot(frequency, probabilities)
-            self.log_message(f"Statistics dashboard generated")
-        except Exception as e:
-            self.log_message(f"Display Error: {e}")
+            # Render histogram with frequency and probability data
+            self.display_histogram_plot(frequency_distribution, probability_distribution)
+            self.log_message("Histogram and statistics rendered successfully.")
+            
+        except Exception as error:
+            self.log_message(f"Error rendering histogram: {error}")
+            return
 
-        change_btn_state(self.btn_compressor, state="normal")
+        # Enable compression analysis button now that histogram exists
+        change_button_state(self.button_compressor, state="normal")
 
     def display_histogram_plot(self, frequency_dict, probability_dict):
         """
-        Integrates the histograms
+        Render histograms for symbol frequency and probability distribution.
+        
+        Args:
+            frequency_dict (dict): Symbol -> count mapping
+            probability_dict (dict): Symbol -> probability mapping
         """
+        # Clear previous visualization if it exists
         if self.canvas_matplotlib:
             self.canvas_matplotlib.get_tk_widget().destroy()
         self.label_canvas_placeholder.pack_forget()
 
+        # Generate histogram figure from tools module
         fig = tools.plot_histograms(frequency_dict, probability_dict)
-        self.img_histogram = fig
+        self.image_histogram = fig  # Cache for later export
         
-        fig.patch.set_facecolor('#2B2B2B')
-        for ax in fig.get_axes():
-            ax.set_facecolor('#2B2B2B')
-            ax.tick_params(colors='white')
-            ax.xaxis.label.set_color('white')
-            ax.yaxis.label.set_color('white')
-            ax.title.set_color('white')
-            ax.grid(True, linestyle='--', alpha=0.3, color='gray')
+        # Apply dark theme styling to all axes
+        fig.patch.set_facecolor('#2B2B2B')  # Figure background
+        for axis in fig.get_axes():
+            axis.set_facecolor('#2B2B2B')  # Subplot background
+            axis.tick_params(colors='white')  # Tick labels white
+            axis.xaxis.label.set_color('white')  # X-axis label
+            axis.yaxis.label.set_color('white')  # Y-axis label
+            axis.title.set_color('white')  # Plot title
+            axis.grid(True, linestyle='--', alpha=0.3, color='gray')  # Grid lines
 
+        # Embed figure into CustomTkinter canvas
         self.canvas_matplotlib = FigureCanvasTkAgg(fig, master=self.frame_canvas)
         self.canvas_matplotlib.draw()
         
+        # Add to widget hierarchy and expand
         tk_widget = self.canvas_matplotlib.get_tk_widget()
         tk_widget.pack(fill="both", expand=True)
 
     def generate_entropy(self):
         """
-        generate the shannon entropy
+        Calculate and display Shannon entropy of the current chain code.
+        Entropy measures the information content and randomness of the sequence.
         """
-        if not hasattr(self, 'actual_chain') or not self.actual_chain:
-            self.log_message("Error: First generate the chain code")
+        # Validate that a chain code exists
+        if not hasattr(self, 'current_chain') or not self.current_chain:
+            self.log_message("Error: Generate a chain code before computing entropy.")
+            return
 
-        entropy = tools.calculate_entropy(self.actual_chain)
-        self.log_message(F"SHANNON ENTROPY \n Result: {entropy: .4} bits")
+        # Compute Shannon entropy using information theory formula
+        entropy_value = tools.calculate_entropy(self.current_chain)
+        
+        # Display result with 4 decimal precision
+        self.log_message(f"\nSHANNON ENTROPY ANALYSIS\nResult: {entropy_value:.4f} bits/symbol")
     
 
     def arithmetic_compression(self):
         """
-        Calculate arithmetic compression
-        """   
-        if not getattr(self, 'actual_chain', None) or not getattr(self, 'actual_probability', None):            
-            self.log_message("Error: Missing chain code or probability data.")
-            return 
-        #Call the mathematical function to return a single number
-        avg_bits_ari = tools.lenght_compression_arithmetic(self.actual_chain, self.actual_probability)
-        #Huffman compression
-        avg_len, total_bits, huffman_code = tools.length_huffman_compression(self.actual_chain, self.actual_probability)        
-        tree_str = "\n".join([f"[{sym}] -> {huffman_code[sym]}" for sym in sorted(huffman_code.keys())])
+        Analyze compression efficiency using arithmetic and Huffman coding schemes.
+        Provides rate-distortion metrics for the current chain code.
+        """
+        # Validate required data for compression analysis
+        if not getattr(self, 'current_chain', None) or not getattr(self, 'current_probability', None):            
+            self.log_message("Error: Missing chain code or probability distribution.")
+            return
+            
+        # Compute arithmetic coding average bits per symbol
+        arithmetic_avg_bits = tools.lenght_compression_arithmetic(self.current_chain, self.current_probability)
         
-        huffman_report = (
-            f"Average length chain code by arithmetic compression: {avg_bits_ari:.4f} \n"
-            f"  Huffman Compression \n"
-            f"  Generated tree: \n{tree_str} \n"
-            f"  Average length: {avg_len: .4f} bits/symbol \n"
-            f"  Total accumulated bits: {total_bits: .4f} bits"
+        # Compute Huffman coding statistics and code tree
+        huffman_avg_bits, huffman_total_bits, huffman_codebook = tools.length_huffman_compression(
+            self.current_chain, self.current_probability
         )
-        self.log_message(huffman_report)
+        
+        # Format Huffman code assignments as human-readable text
+        huffman_tree_text = "\n".join(
+            [f"[{sym}] -> {huffman_codebook[sym]}" for sym in sorted(huffman_codebook.keys())]
+        )
+        
+        # Compile comprehensive compression report
+        compression_report = (
+            f"\nCOMPRESSION ANALYSIS REPORT\n"
+            f"─────────────────────────────\n"
+            f"Arithmetic Coding:\n"
+            f"  Average bits per symbol: {arithmetic_avg_bits:.4f}\n\n"
+            f"Huffman Coding:\n"
+            f"  Code Tree:\n{huffman_tree_text}\n\n"
+            f"  Average bits per symbol: {huffman_avg_bits:.4f}\n"
+            f"  Total bits for full chain: {huffman_total_bits:.4f}"
+        )
+        self.log_message(compression_report)
 
     def save_chain_code(self):
         """
-        Export the current chain code and metadata to a JSON file.
+        Export the current chain code and analysis metadata to a JSON file.
         """
-        # Verify that there is data to save
-        if not hasattr(self, 'actual_chain') or self.actual_chain is None:
+        # Validate that chain code and perimeter data exist
+        if not hasattr(self, 'current_chain') or not self.current_chain:
             self.log_message("Error: No chain code to export. Generate it first.")
             return
-        if not hasattr(self, "img_perimeter") or self.img_perimeter is None:
-            self.log_message("Error: No perimeter of image.")
+        if not hasattr(self, "image_perimeter") or self.image_perimeter is None:
+            self.log_message("Error: Image perimeter not computed. Run 'View Contour' first.")
             return
 
-        # Open the native 'Save As' dialog
+        # Open native file save dialog
         file_path = filedialog.asksaveasfilename(
             title="Save Chain Code",
             defaultextension=".json",
@@ -407,44 +530,51 @@ class MainWindow(CTkFrame):
             initialfile="chain_code_result.json"
         )
 
-        # If the user cancels the dialog
+        # User cancelled save dialog
         if not file_path:
             return
-
-        # Structure the metadata and data
-        data_to_save = {
+            
+        # Extract image dimensions from binary matrix
+        image_height, image_width = 0, 0
+        if self.binary_matrix is not None:
+            # np.ndarray.shape returns (rows, cols) -> (height, width)
+            image_height, image_width = self.binary_matrix.shape[:2]
+            
+        # Assemble metadata and serializable data
+        data_to_export = {
             "metadata": {
                 "export_date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "algorithm": self.combobox_var.get(),
-                # Retrieve the perimeter if it was saved during the outline process
-                "perimeter": getattr(self, 'img_perimeter'), 
-                "chain_length": len(self.actual_chain)
+                "algorithm": self.combobox_variable.get(),
+                "perimeter": getattr(self, 'image_perimeter'), 
+                "image_width": int(image_width),
+                "image_height": int(image_height),
+                "chain_length": len(self.current_chain)
             },
-            "chain_code": self.actual_chain
+            "chain_code": self.current_chain
         }
 
-        # Write to the file
+        # Write JSON with pretty printing for readability
         try:
             with open(file_path, 'w', encoding='utf-8') as json_file:
-                # indent=4 makes the JSON easily readable by humans
-                json.dump(data_to_save, json_file, indent=4)
+                json.dump(data_to_export, json_file, indent=4)
                 
             file_name = os.path.basename(file_path)
-            self.log_message(f"Success: Data exported to {file_name}")
+            self.log_message(f"Success: Chain code exported to {file_name}")
             
-        except Exception as e:
-            self.log_message(f"Error saving file: {e}")
+        except Exception as error:
+            self.log_message(f"Error saving file: {error}")
 
     def save_histogram(self):
         """
-        Export the currently displayed Matplotlib figure as an image file.
+        Export the current histogram figure as an image file.
+        Supports PNG, PDF, and JPEG formats.
         """
-        # Check if there is a figure to save
-        if not getattr(self, 'img_histogram', None):
-            self.log_message("Error: No histogram generated to save.")
+        # Validate that a histogram has been generated
+        if not getattr(self, 'image_histogram', None):
+            self.log_message("Error: No histogram available. Generate one first.")
             return
 
-        # Open the native Save As dialog
+        # Open native file save dialog with format selection
         file_path = filedialog.asksaveasfilename(
             title="Save Histogram",
             defaultextension=".png",
@@ -457,26 +587,99 @@ class MainWindow(CTkFrame):
             initialfile="histogram_metrics.png"
         )
 
+        # User cancelled save dialog
         if not file_path:
             return
 
-        # Save the figure preserving the dark theme background
+        # Export figure while preserving dark theme styling
         try:
-            self.img_histogram.savefig(
+            self.image_histogram.savefig(
                 file_path, 
-                facecolor=self.img_histogram.get_facecolor(), 
+                facecolor=self.image_histogram.get_facecolor(),  # Maintain background color
                 edgecolor='none',
-                bbox_inches='tight' # Removes extra blank padding
+                bbox_inches='tight'  # Minimize whitespace padding
             )
             
             file_name = os.path.basename(file_path)
-            self.log_message(f"Success: Histogram saved as {file_name}")
+            self.log_message(f"Success: Histogram exported to {file_name}")
             
-        except Exception as e:
-            self.log_message(f"Error saving histogram: {e}")
-
-    def close(self):
+        except Exception as error:
+            self.log_message(f"Error exporting histogram: {error}")
+    
+    def load_chain_code(self):
         """
-        Cleanup and close the application.
+        Load a previously exported chain code from JSON file, reconstruct the image,
+        and display it for further analysis.
+        """
+        # Open native file open dialog filtered for JSON files
+        file_path = filedialog.askopenfilename(
+            title="Load Chain Code JSON",
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+        )
+        
+        if not file_path:
+            return
+
+        try:
+            # Parse JSON file to extract metadata and chain code
+            with open(file_path, 'r', encoding='utf-8') as json_file:
+                loaded_data = json.load(json_file)
+
+            metadata = loaded_data.get("metadata", {})
+            chain_code = loaded_data.get("chain_code", [])
+            algorithm_name = metadata.get("algorithm", "").upper()  # e.g., "F4", "3OT"
+
+            # Validate chain code is present
+            if not chain_code:
+                self.log_message("Error: JSON file does not contain a valid chain code.")
+                return
+
+            self.log_message(f"JSON loaded successfully.")
+            self.log_message(f"Algorithm: {algorithm_name} | Chain length: {len(chain_code)}")
+
+            # Build decoder function registry
+            all_decoding_functions = list_functions(decoding_functions)
+            decoder_registry = {}
+            for function_name, function_obj in all_decoding_functions.items():
+                # Match decoder functions naming pattern: DECODE_X_TO_MATRIX
+                if function_name.startswith("DECODE_") and function_name.endswith("_TO_MATRIX"):
+                    # Extract algorithm code (e.g., "F4" from "DECODE_F4_TO_MATRIX")
+                    algorithm_code = function_name.replace("DECODE_", "").replace("_TO_MATRIX", "")
+                    decoder_registry[algorithm_code] = function_obj
+
+            # Reconstruct image using the appropriate decoder
+            if algorithm_name in decoder_registry:
+                self.log_message(f"Reconstructing image using {algorithm_name} decoder...")
+                
+                # Special handling for 3OT (returns closure status)
+                if algorithm_name == "3OT":
+                    reconstructed_image, is_properly_closed = decoder_registry[algorithm_name](chain_code)
+                    if not is_properly_closed:
+                        self.log_message("Warning: 3OT code did not close perfectly. Showing contour only.")
+                else:
+                    reconstructed_image = decoder_registry[algorithm_name](chain_code)
+
+                # Cache reconstructed image and display
+                self.binary_matrix = reconstructed_image
+                self.display_on_canvas(self.binary_matrix, title=f"Reconstructed: {algorithm_name}")
+                
+                self.log_message("Image reconstruction successful.")
+                self.log_message(f"Image dimensions: {self.binary_matrix.shape}")
+
+                # Enable control buttons for analysis of reconstructed image
+                change_button_state(self.button_outline, state="normal")
+                change_button_state(self.button_chain_generator, state="normal")
+                change_button_state(self.button_descriptor, state="normal")
+                change_button_state(self.combobox_chain_type, state="normal")
+                
+            else:
+                self.log_message(f"Error: No decoder available for algorithm '{algorithm_name}'.")
+
+        except Exception as error:
+            self.log_message(f"Error loading or decoding JSON file: {error}")
+
+    def on_window_close(self):
+        """
+        Handle application shutdown: cleanup resources and exit gracefully.
         """
         self.quit()
