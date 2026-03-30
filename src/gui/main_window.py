@@ -459,19 +459,55 @@ class MainWindow(CTkFrame):
 
     def generate_entropy(self):
         """
-        Calculate and display Shannon entropy of the current chain code.
-        Entropy measures the information content and randomness of the sequence.
+        Calculate and display geometric properties and Shannon entropy.
+        Requires: binary_matrix (imagen) and current_chain (cadena F4).
         """
-        # Validate that a chain code exists
+        # Validar que existe cadena de cadena
         if not hasattr(self, 'current_chain') or not self.current_chain:
-            self.log_message("Error: Generate a chain code before computing entropy.")
+            self.log_message("Error: Generate a chain code before computing descriptor.")
             return
 
-        # Compute Shannon entropy using information theory formula
+        # Validar que existe imagen binaria
+        if self.binary_matrix is None:
+            self.log_message("Error: No binary image available.")
+            return
+
+        # --- ENTROPÍA DE SHANNON ---
         entropy_value = tools.calculate_entropy(self.current_chain)
-        
-        # Display result with 4 decimal precision
-        self.log_message(f"\nSHANNON ENTROPY ANALYSIS\nResult: {entropy_value:.4f} bits/symbol")
+
+        # --- PROPIEDADES GEOMÉTRICAS ---
+        # Perímetro desde cadena F4
+        # Si el código actual es F4 úsalo directo, si no, calculamos F4 de la imagen
+        chain_type = self.combobox_variable.get().upper()
+        if chain_type == "CHAIN_F4":
+            f4_chain = self.current_chain
+        else:
+            from src.logic import chain_codes
+            f4_chain = chain_codes.chain_f4(self.binary_matrix)
+
+        perimeter   = tools.calculate_perimeter_f4(f4_chain)
+        area        = tools.calculate_area(self.binary_matrix)
+        contact_per = tools.calculate_contact_perimeter(self.binary_matrix)
+        compactness = tools.calculate_discrete_compactness(area, perimeter)
+        euler, components, holes = tools.calculate_euler(self.binary_matrix)
+
+        # --- MOSTRAR RESULTADOS ---
+        report = (
+            f"\n{'='*40}\n"
+            f"  DESCRIPTOR REPORT\n"
+            f"{'='*40}\n"
+            f"  GEOMETRIC PROPERTIES\n"
+            f"  Perimeter (F4):        {perimeter} px\n"
+            f"  Area:                  {area} px\n"
+            f"  Contact Perimeter:     {contact_per} px\n"
+            f"  Discrete Compactness:  {compactness:.6f}\n"
+            f"  Euler Characteristic:  {euler} (C={components}, H={holes})\n"
+            f"{'─'*40}\n"
+            f"  INFORMATION THEORY\n"
+            f"  Shannon Entropy:       {entropy_value:.4f} bits/symbol\n"
+            f"{'='*40}"
+        )
+        self.log_message(report)
     
 
     def arithmetic_compression(self):

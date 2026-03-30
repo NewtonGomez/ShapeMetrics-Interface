@@ -42,23 +42,30 @@ def save_matrix_to_csv(matrix_data: np.ndarray, filename: str):
     
     print(f"File saved successfully: {filename}")
 
-def process_and_binarize(filename, threshold=128):
+def process_and_binarize(filename, threshold=128, padding=2):
     """
     Load image, convert to grayscale, and apply binary threshold.
+    Adds black padding around the image so objects touching the border
+    are always surrounded by background, ensuring correct contour detection.
     """
     try:
-        # Load image and convert to single channel
         with Image.open(filename) as img:
             img.seek(0)
             gray_img = img.convert('L')
             np_array = np.array(gray_img)
-            
-            # Convert to binary: 1 if pixel > threshold, 0 otherwise
-            binary_array = ((np_array > threshold)*255).astype(int)
-            
+
+            # Convert to binary: pixels > threshold become 255, rest 0
+            binary_array = ((np_array > threshold) * 255).astype(int)
+
+            # Add black padding so objects never touch the image border
+            if padding > 0:
+                binary_array = np.pad(
+                    binary_array, padding,
+                    mode='constant', constant_values=0
+                )
+
             return binary_array
     except Exception as e:
-        # Return exception object on failure
         return e
 
 def connected_components(matrix: np.ndarray, neighbor: int = 4) -> int:
@@ -349,3 +356,129 @@ def length_huffman_compression(chain, probability_dict):
         total_bits += freq * len(bits)
 
     return mean_length, total_bits, huffman_code    
+
+def calculate_perimeter_f4(f4_chain):
+    """
+    Calculate the perimeter using the length of the F4 chain.
+      Each step in F4 equals 1 unit of distance.
+    """
+    return len(f4_chain)
+
+
+def calculate_area(binary_matrix):
+    """
+   Calculate the area by counting the white pixels (255) in the binary image.
+    """
+    return int(np.sum(binary_matrix == 255))
+
+
+def calculate_contact_perimeter(binary_matrix):
+    """
+   Calculate the contact perimeter: number of white pixel - black pixel adjacent pairs in N4 
+   (4-neighborhood). That is, for each white pixel, count how many of its 4 neighbors are black.
+    """
+    rows, cols = binary_matrix.shape
+    norm = (binary_matrix == 255).astype(int)
+    contact = 0
+
+    for i in range(rows):
+        for j in range(cols):
+            if norm[i][j] == 1:
+                for di, dj in [(-1,0),(1,0),(0,-1),(0,1)]:
+                    ni, nj = i + di, j + dj
+                    if 0 <= ni < rows and 0 <= nj < cols:
+                        if norm[ni][nj] == 0:
+                            contact += 1
+                    else:
+                        #The edge of de image counts as the background
+                        contact += 1
+    return contact
+
+
+def calculate_discrete_compactness(area, perimeter):
+    """
+    Calculate the discrete compactness. 
+    Formula: CD = (n - p/4) / (n - sqrt(n)) 
+    where n = area, p = perimeter F4
+    """
+    if area <= 0:
+        return 0.0
+    import math
+    sqrt_n = math.sqrt(area)
+    denominator = area - sqrt_n
+    if denominator == 0:
+        return 0.0
+    numerator = area - (perimeter / 4)
+    return numerator / denominator
+
+
+def calculate_holes(binary_matrix):
+    """
+    Count the holes in the object: background regions (0) completely enclosed by white pixels. 
+    Use N4 for the background.
+    Method: flood fill from all edges to mark the exterior background; what remains black and unmarked are the holes.
+    """
+    rows, cols = binary_matrix.shape
+    norm = (binary_matrix == 255).astype(int)
+
+    # Mark outer background with N4 flood fill from the edges
+    exterior = np.zeros((rows, cols), dtype=bool)
+    stack = []
+
+    # Add all the outer pixels wich belong to background
+    for i in range(rows):
+        for j in [0, cols - 1]:
+            if norm[i][j] == 0 and not exterior[i][j]:
+                exterior[i][j] = True
+                stack.append((i, j))
+    for j in range(cols):
+        for i in [0, rows - 1]:
+            if norm[i][j] == 0 and not exterior[i][j]:
+                exterior[i][j] = True
+                stack.append((i, j))
+
+    # Flood fill N4 para marcar todo el fondo exterior
+    movements = [(-1,0),(1,0),(0,-1),(0,1)]
+    while stack:
+        r, c = stack.pop()
+        for dr, dc in movements:
+            nr, nc = r + dr, c + dc
+            if 0 <= nr < rows and 0 <= nc < cols:
+                if norm[nr][nc] == 0 and not exterior[nr][nc]:
+                    exterior[nr][nc] = True
+                    stack.append((nr, nc))
+
+    # The unmarked black pixels count as a hole
+    # Count conected components of those pixels (N4)
+    hole_pixels = (norm == 0) & (~exterior)
+    visited = np.zeros((rows, cols), dtype=bool)
+    num_holes = 0
+
+    for i in range(rows):
+        for j in range(cols):
+            if hole_pixels[i][j] and not visited[i][j]:
+                num_holes += 1
+                stack2 = [(i, j)]
+                visited[i][j] = True
+                while stack2:
+                    cr, cc = stack2.pop()
+                    for dr, dc in movements:
+                        nr, nc = cr + dr, cc + dc
+                        if 0 <= nr < rows and 0 <= nc < cols:
+                            if hole_pixels[nr][nc] and not visited[nr][nc]:
+                                visited[nr][nc] = True
+                                stack2.append((nr, nc))
+
+    return num_holes
+
+
+def calculate_euler(binary_matrix):
+    """
+    Calculate Euler characteristic: E = C - H
+    C = concected components of the object (N8)
+    H = holes (N4)
+    """
+    norm = (binary_matrix == 255).astype(int)
+    C = connected_components(norm, neighbor=8)
+    H = calculate_holes(binary_matrix)
+    return C - H, C, H
