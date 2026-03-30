@@ -294,7 +294,7 @@ class MainWindow(CTkFrame):
         # Call image processing tool to extract contour
         outline_data = tools.find_outline(self.binary_matrix)
         
-        contour_matrix = outline_data["contour"]
+        contour_matrix = outline_data["outline_matrix"]  # BUG FIX: "contour" now holds ordered points; use "outline_matrix" for display
         self.image_perimeter = outline_data["perimeter"]
         
         # Render with red overlay for visual contrast
@@ -626,8 +626,15 @@ class MainWindow(CTkFrame):
                 loaded_data = json.load(json_file)
 
             metadata = loaded_data.get("metadata", {})
-            chain_code = loaded_data.get("chain_code", [])
+            chain_code_raw = loaded_data.get("chain_code", [])
             algorithm_name = metadata.get("algorithm", "").upper()  # e.g., "F4", "3OT"
+
+            # BUG FIX: flatten chain_code in case it was saved as nested list
+            # JSON may deserialize some chain formats as list-of-lists
+            if chain_code_raw and isinstance(chain_code_raw[0], list):
+                chain_code = [item for sublist in chain_code_raw for item in sublist]
+            else:
+                chain_code = [int(x) for x in chain_code_raw]  # ensure all elements are int
 
             # Validate chain code is present
             if not chain_code:

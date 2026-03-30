@@ -107,32 +107,70 @@ def connected_components(matrix: np.ndarray, neighbor: int = 4) -> int:
 def find_outline(matrix: np.ndarray) -> dict:
     """
     Detect object outline/edges using neighborhood analysis.
+    Returns:
+      - "contour": ordered list of (x,y) border points for chain_f8
+      - "outline_matrix": 2D matrix marking edge pixels (for display)
+      - "perimeter": count of edge pixels
     """
-    #rows, cols = matrix.shape
     rows, cols = matrix.shape
     outline_count = 0
     outline = np.zeros((rows, cols), dtype=int)
-    
-    # Scan interior pixels (skip borders)
+
+    # Normalize: accept 0/1 or 0/255 images
+    norm = matrix if matrix.max() <= 1 else (matrix > 127).astype(int)
+
     for i in range(1, rows - 1):
         for j in range(1, cols - 1):
-            # Skip background pixels
-            if matrix[i][j] == 0:
+            if norm[i][j] == 0:
                 continue
-
-            # Sum 4-neighborhood values
-            neighborhood_sum = (matrix[i, j - 1] + matrix[i, j + 1] +
-                               matrix[i - 1, j] + matrix[i + 1, j])
-            
-            # Edge pixel: has at least one background neighbor
-            if neighborhood_sum < 1020:
+            neighborhood_sum = (norm[i, j-1] + norm[i, j+1] +
+                                norm[i-1, j] + norm[i+1, j])
+            if neighborhood_sum < 4:
                 outline[i][j] = 1
                 outline_count += 1
-            else:
-                # Interior pixel: all neighbors are foreground
-                outline[i][j] = 0
-    
-    return {"contour": outline, "perimeter": outline_count}
+
+    # Build ordered contour point list using Moore neighborhood tracing
+    ordered_contour = []
+    start = None
+    for i in range(rows):
+        for j in range(cols):
+            if outline[i][j] == 1:
+                start = (i, j)
+                break
+        if start:
+            break
+
+    if start:
+        neighbors_8 = [(0,1),(1,1),(1,0),(1,-1),(0,-1),(-1,-1),(-1,0),(-1,1)]
+        visited_trace = set()
+        cr, cc = start
+        prev_dir = 6
+        ordered_contour.append((cc, cr))  # (x=col, y=row)
+        visited_trace.add((cr, cc))
+
+        for _ in range(outline_count * 2):
+            found = False
+            start_search = (prev_dir + 5) % 8
+            for k in range(8):
+                d = (start_search + k) % 8
+                nr = cr + neighbors_8[d][0]
+                nc = cc + neighbors_8[d][1]
+                if (0 <= nr < rows and 0 <= nc < cols
+                        and outline[nr][nc] == 1
+                        and (nr, nc) not in visited_trace):
+                    ordered_contour.append((nc, nr))  # (x, y)
+                    visited_trace.add((nr, nc))
+                    prev_dir = d
+                    cr, cc = nr, nc
+                    found = True
+                    break
+            if not found:
+                break
+
+    # Restore outline matrix to original value range
+    outline_matrix = (outline * 255).astype(np.uint8) if matrix.max() > 1 else outline
+
+    return {"contour": ordered_contour, "perimeter": outline_count, "outline_matrix": outline_matrix}
 
 def plot_histograms(frequency_dict, probability_dict):
     """
@@ -310,4 +348,4 @@ def length_huffman_compression(chain, probability_dict):
         freq = round (probability_dict[symbol]* total_symbols)
         total_bits += freq * len(bits)
 
-    return mean_length, total_bits, huffman_code  
+    return mean_length, total_bits, huffman_code    

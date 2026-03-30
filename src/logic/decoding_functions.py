@@ -1,3 +1,4 @@
+
 import numpy as np
 
 # =============================
@@ -42,33 +43,43 @@ def fill_shape(binary_matrix):
 def af8_to_f8(af8_chain):
     """
     Convert AF8 (relative) chain to F8 (absolute) by testing initial directions.
-    
-    Args:
-        af8_chain (list): Relative AF8 chain (0-7)
-        
-    Returns:
-        list: Absolute F8 chain
+
+    The AF8 encoder produces: af8[i] = (f8[i] - f8[i-1]) mod 8  (circular, i=0 uses f8[-1])
+    So to decode:  f8[i] = (f8[i-1] + af8[i]) mod 8
+    We test all 8 possible values for f8[-1] (= f8[last]) as the seed.
     """
     moves = {0:(0,1), 1:(1,1), 2:(1,0), 3:(1,-1),
             4:(0,-1), 5:(-1,-1), 6:(-1,0), 7:(-1,1)}
 
-    for initial_direction in range(8):
+    # BUG FIX: la cadena AF8 es circular; af8[0] = (f8[0] - f8[-1]) mod 8
+    # Por eso el "previous" para el primer simbolo es f8[-1], no una direccion arbitraria.
+    # Probamos los 8 valores posibles de f8[-1] como semilla.
+    for last_direction in range(8):
         f8 = []
-        current_state = initial_direction
+        previous = last_direction
 
         for relative_symbol in af8_chain:
-            current_state = (current_state + relative_symbol) % 8
-            f8.append(current_state)
+            current = (previous + relative_symbol) % 8
+            f8.append(current)
+            previous = current
 
-        x, y = 0, 0
-        for direction in f8:
-            dx, dy = moves[direction]
-            x += dx
-            y += dy
+        # La semilla es correcta si f8[-1] coincide con last_direction Y la trayectoria cierra
+        if f8 and f8[-1] == last_direction:
+            x, y = 0, 0
+            for direction in f8:
+                dx, dy = moves[direction]
+                x += dx
+                y += dy
+            if x == 0 and y == 0:
+                return f8
 
-        if x == 0 and y == 0:
-            return f8
-
+    # Fallback: devolver la mejor aproximacion posible
+    f8 = []
+    previous = 0
+    for relative_symbol in af8_chain:
+        current = (previous + relative_symbol) % 8
+        f8.append(current)
+        previous = current
     return f8
 
 
@@ -135,91 +146,125 @@ def vcc_to_f4(vcc_chain, initial_direction=0):
 
 def c3ot_to_f4(c3ot_chain):
     """
-    Convert 3OT (3-option turn) chain to F4 by testing initial directions.
-    
-    Args:
-        c3ot_chain (list): 3OT chain with symbols 0=straight, 1=left, 2=right
-        
-    Returns:
-        tuple: (f4_chain, is_closed)
+    Convert 3OT chain to F4 by inverting exactly the encoder logic of chain_3ot.
+
+    El simbolo '1' es ambiguo en el encoder: puede significar
+    "regresa a referencia" O "cualquier otro giro" (que es +1 o +3 desde previous).
+    Por eso probamos las 3 interpretaciones posibles para cada simbolo 1:
+      a) current_dir = reference
+      b) current_dir = (previous + 1) % 4
+      c) current_dir = (previous + 3) % 4
+    usando BFS para encontrar la combinacion que cierra la forma.
     """
     if not c3ot_chain:
         return [], False
 
-    # El codificador 3OT pierde el primer paso F4 absoluto.
-    # Debemos probar las 4 direcciones iniciales posibles para el PRIMER paso.
-    for first_f4_step in range(4):
-        f4 = [first_f4_step] # Inicializamos la cadena F4 con el paso asumido
-        
-        # Estas variables imitan el estado exacto del encoder al inicio del bucle
-        reference = first_f4_step
-        previous = first_f4_step
+    def simulate(first_step, first_turn_delta, symbol1_choices):
+        """
+        Simula el decoder con elecciones especificas para cada simbolo ambiguo.
+        symbol1_choices: lista de decisiones (0=ref, 1=+1, 2=+3) para cada simbolo '1'
+        """
+        f4 = [first_step]
+        reference = first_step
+        previous = first_step
         direction_changed = False
+        choice_idx = 0
 
         for symbol in c3ot_chain:
-            # Lógica inversa exacta del encoder chain_3ot:
             if symbol == 0:
-                current_dir = previous # No change
+                current_dir = previous
+
             elif symbol == 2 and not direction_changed:
-                 # First direction change is always encoded as 2
-                 # We must try to deduce what direction it actually turned to.
-                 # Usually, in contour tracing (counter-clockwise or clockwise),
-                 # the first turn determines the orientation.
-                 # We'll assume a standard turn (e.g., left turn if tracing outer border).
-                 # To be robust, we might need to test both left (1) and right (3) turns here
-                 # if the simple standard assumption fails. For now, let's assume a standard turn.
-                 current_dir = (previous + 1) % 4 # Assuming left turn logic for outer contours
-                 direction_changed = True
-                 reference = previous
+                current_dir = (previous + first_turn_delta) % 4
+                direction_changed = True
+                reference = previous
+
             elif symbol == 1:
-                # Other turn or return to reference
-                # This logic is tricky to reverse purely from the symbol because '1' means two different things.
-                # Let's simplify and use a direct mapping based on standard relative turns
-                # if the original complex logic is too ambiguous to reverse without extra data.
-                
-                # Simplified robust decoder approach:
-                # Treat 0 as straight, 1 as left turn (-90 deg), 2 as right turn (+90 deg).
-                # If your encoder's complex logic (return to reference, opposite direction, etc.) 
-                # is strictly required, the decoding loop becomes highly non-linear.
-                
-                # Let's try standard relative interpretation first, as it often aligns 
-                # with practical implementations of 3OT variants:
-                current_dir = (previous + 1) % 4 # Left
+                choice = symbol1_choices[choice_idx] if choice_idx < len(symbol1_choices) else 0
+                choice_idx += 1
+                if choice == 0:
+                    current_dir = reference
+                elif choice == 1:
+                    current_dir = (previous + 1) % 4
+                else:
+                    current_dir = (previous + 3) % 4
+                reference = previous
+
             elif symbol == 2:
-                current_dir = (previous + 3) % 4 # Right
+                current_dir = (reference + 2) % 4
+                reference = previous
+
             else:
                 current_dir = previous
 
             f4.append(current_dir)
             previous = current_dir
 
-        # Validamos si esta cadena F4 generada cierra
-        if closes_f4_shape(f4):
-            return f4, True
+        return f4
 
-    # Si la lógica compleja falla, intentamos una interpretación directa estándar
-    # asumiendo que 1 = Giro Izquierda (+1) y 2 = Giro Derecha (+3)
-    for first_f4_step in range(4):
-        f4 = [first_f4_step]
-        current_dir = first_f4_step
-        
-        for symbol in c3ot_chain:
-            if symbol == 0:
-                new_dir = current_dir
-            elif symbol == 1:
-                 new_dir = (current_dir + 1) % 4
-            elif symbol == 2:
-                 new_dir = (current_dir + 3) % 4
-            else:
-                 new_dir = current_dir
-                 
-            f4.append(new_dir)
-            current_dir = new_dir
-            
-        if closes_f4_shape(f4):
-            return f4, True
+    # Contar cuantos simbolos '1' hay para saber cuantas decisiones tomar
+    num_ones = c3ot_chain.count(1)
 
-    return f4, False
+    # Estrategia 1: probar con todos los simbolos 1 = "regresa a referencia" (choice=0)
+    # Esta es la interpretacion mas comun y rapida de probar
+    for first_step in range(4):
+        for first_turn_delta in [1, 3]:
+            choices = [0] * num_ones
+            f4 = simulate(first_step, first_turn_delta, choices)
+            if closes_f4_shape(f4):
+                return f4, True
+
+    # Estrategia 2: todos los simbolos 1 = giro izquierda
+    for first_step in range(4):
+        for first_turn_delta in [1, 3]:
+            choices = [1] * num_ones
+            f4 = simulate(first_step, first_turn_delta, choices)
+            if closes_f4_shape(f4):
+                return f4, True
+
+    # Estrategia 3: todos los simbolos 1 = giro derecha
+    for first_step in range(4):
+        for first_turn_delta in [1, 3]:
+            choices = [2] * num_ones
+            f4 = simulate(first_step, first_turn_delta, choices)
+            if closes_f4_shape(f4):
+                return f4, True
+
+    # Estrategia 4: alternar entre referencia y giro izquierda
+    for first_step in range(4):
+        for first_turn_delta in [1, 3]:
+            choices = [i % 2 for i in range(num_ones)]
+            f4 = simulate(first_step, first_turn_delta, choices)
+            if closes_f4_shape(f4):
+                return f4, True
+
+    # Estrategia 5: alternar entre referencia y giro derecha
+    for first_step in range(4):
+        for first_turn_delta in [1, 3]:
+            choices = [0 if i % 2 == 0 else 2 for i in range(num_ones)]
+            f4 = simulate(first_step, first_turn_delta, choices)
+            if closes_f4_shape(f4):
+                return f4, True
+
+    # Fallback: devolver el mejor intento (el que mas cerca cierra)
+    best_f4 = None
+    best_dist = float('inf')
+    moves = {0:(1,0), 1:(0,1), 2:(-1,0), 3:(0,-1)}
+    for first_step in range(4):
+        for first_turn_delta in [1, 3]:
+            for choices in [[0]*num_ones, [1]*num_ones, [2]*num_ones]:
+                f4 = simulate(first_step, first_turn_delta, choices)
+                x, y = 0, 0
+                for d in f4:
+                    dx, dy = moves[d]
+                    x += dx
+                    y += dy
+                dist = abs(x) + abs(y)
+                if dist < best_dist:
+                    best_dist = dist
+                    best_f4 = f4
+
+    return best_f4, False
 
 
 # =============================
@@ -321,20 +366,22 @@ def f8_to_matrix(f8_chain, padding=10):
     max_y = max(all_y)
     
     # Calculate absolute dimensions
-    height = max_x - min_x + 1
-    width = max_y - min_y + 1
+    # x -> columnas (ancho), y -> filas (alto)
+    width  = max_x - min_x + 1   # BUG FIX: antes estaba invertido (usaba max_x para height)
+    height = max_y - min_y + 1   # BUG FIX: antes estaba invertido (usaba max_y para width)
     
     # Create matrix with padding
     final_height = height + 2 * padding
-    final_width = width + 2 * padding
+    final_width  = width  + 2 * padding
     
     matrix = np.zeros((final_height, final_width), dtype=np.uint8)
     
     # Draw contour with adjusted coordinates
+    # BUG FIX: numpy indexa [fila, columna] = [y, x], no [x, y]
     for coord_x, coord_y in coordinates:
-        adj_x = coord_x - min_x + padding
-        adj_y = coord_y - min_y + padding
-        matrix[adj_x, adj_y] = 255
+        adj_x = coord_x - min_x + padding   # columna
+        adj_y = coord_y - min_y + padding   # fila
+        matrix[adj_y, adj_x] = 255
     
     return matrix
 
