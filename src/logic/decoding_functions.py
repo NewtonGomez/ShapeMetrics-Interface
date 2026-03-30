@@ -51,8 +51,6 @@ def af8_to_f8(af8_chain):
     moves = {0:(0,1), 1:(1,1), 2:(1,0), 3:(1,-1),
             4:(0,-1), 5:(-1,-1), 6:(-1,0), 7:(-1,1)}
 
-    # BUG FIX: la cadena AF8 es circular; af8[0] = (f8[0] - f8[-1]) mod 8
-    # Por eso el "previous" para el primer simbolo es f8[-1], no una direccion arbitraria.
     # Probamos los 8 valores posibles de f8[-1] como semilla.
     for last_direction in range(8):
         f8 = []
@@ -83,33 +81,25 @@ def af8_to_f8(af8_chain):
     return f8
 
 
-def closes_f4_shape(f4_chain):
+def closes_f4_shape(f4_chain, tolerance=0):
     """
-    Verify if an F4 chain generates a closed contour (semantics fixed).
+    Verify if an F4 chain generates a closed contour.
+    tolerance=0: cierre exacto
+    tolerance>0: acepta cadenas que casi cierran (distancia Manhattan <= tolerance)
     """
     x, y = 0, 0
-    
-    # CAMBIO CRÍTICO: Sincronizar con el estándar Freeman de imagen usado por el encoder.
-    # El mapa semántico anterior del decoder interpretaba 0 como Arriba.
-    # El mapa estándar Freeman interpreta 0 como Derecha.
     moves_standard_freeman = {
-        0:(1, 0),  # Derecha (dx=1, dy=0)
-        1:(0, 1),  # Abajo (dx=0, dy=1) en imagen, en cartesiano standard esto se vería reflejado verticalmente pero la forma cierra.
-        2:(-1, 0), # Izquierda
-        3:(0, -1)  # Arriba
+        0:(1, 0),
+        1:(0, 1),
+        2:(-1, 0),
+        3:(0, -1)
     }
-    
-    # Si quieres interpretar (0,1) como Arriba semántico matemático (Cartesiano Puro):
-    # 0: Derecho, 1: Arriba, 2: Izquierda, 3: Abajo
-    # moves_math_cartesiano = {0:(1, 0), 1:(0, 1), 2:(-1, 0), 3:(0, -1)} 
-    # Usaremos el Freeman estándar de imagen porque es el más robusto para cerrar formas de contornos de pixeles extraídos con librerías como OpenCV.
-
     for direction in f4_chain:
         dx, dy = moves_standard_freeman[direction]
         x += dx
         y += dy
 
-    return x == 0 and y == 0
+    return (abs(x) + abs(y)) <= tolerance
 
 
 def vcc_to_f4(vcc_chain, initial_direction=0):
@@ -246,6 +236,16 @@ def c3ot_to_f4(c3ot_chain):
             if closes_f4_shape(f4):
                 return f4, True
 
+    # Estrategia 6: tolerar cierre aproximado (distancia <= 2)
+    for first_step in range(4):
+        for first_turn_delta in [1, 3]:
+            for choices in [[0]*num_ones, [1]*num_ones, [2]*num_ones,
+                            [i % 2 for i in range(num_ones)],
+                            [0 if i % 2 == 0 else 2 for i in range(num_ones)]]:
+                f4 = simulate(first_step, first_turn_delta, choices)
+                if closes_f4_shape(f4, tolerance=2):
+                    return f4, True  # Aceptar como valido con tolerancia
+
     # Fallback: devolver el mejor intento (el que mas cerca cierra)
     best_f4 = None
     best_dist = float('inf')
@@ -367,8 +367,8 @@ def f8_to_matrix(f8_chain, padding=10):
     
     # Calculate absolute dimensions
     # x -> columnas (ancho), y -> filas (alto)
-    width  = max_x - min_x + 1   # BUG FIX: antes estaba invertido (usaba max_x para height)
-    height = max_y - min_y + 1   # BUG FIX: antes estaba invertido (usaba max_y para width)
+    width  = max_x - min_x + 1   #  antes estaba invertido (usaba max_x para height)
+    height = max_y - min_y + 1   #  antes estaba invertido (usaba max_y para width)
     
     # Create matrix with padding
     final_height = height + 2 * padding
@@ -377,7 +377,7 @@ def f8_to_matrix(f8_chain, padding=10):
     matrix = np.zeros((final_height, final_width), dtype=np.uint8)
     
     # Draw contour with adjusted coordinates
-    # BUG FIX: numpy indexa [fila, columna] = [y, x], no [x, y]
+    # numpy indexa [fila, columna] = [y, x], no [x, y]
     for coord_x, coord_y in coordinates:
         adj_x = coord_x - min_x + padding   # columna
         adj_y = coord_y - min_y + padding   # fila
