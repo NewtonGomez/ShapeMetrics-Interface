@@ -310,4 +310,4 @@ def length_huffman_compression(chain, probability_dict):
         freq = round (probability_dict[symbol]* total_symbols)
         total_bits += freq * len(bits)
 
-    return mean_length, total_bits, huffman_code    
+    return mean_length, total_bits, huffman_code  

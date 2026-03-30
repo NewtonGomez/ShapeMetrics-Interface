@@ -93,51 +93,43 @@ def chain_f4(binary_img):
     return chain
 
 def chain_f8(binary_img):
-    """
-    Generate 8-directional Freeman chain code using contour extraction.
-    """
-    # Get contour from image using outline detection
-    contour = tools.find_outline(binary_img)
-    contorno = contour["contour"]
-    if contorno is None or len(contorno) == 0:
-    #if contorno is None:
+    # 1. Obtener el diccionario del contorno
+    contour_data = tools.find_outline(binary_img)
+    outline_matrix = contour_data["contour"]
+    
+    if outline_matrix is None:
         return []
-    contorno = np.array(contorno).reshape(-1,2)
-    # 8-directional mapping: (dy, dx) -> direction_code
+
+    # 2. Convertir la MATRIZ en una lista de puntos (y, x) donde hay un '1'
+    # Usamos np.argwhere para encontrar las coordenadas de los pixeles del borde
+    points = np.argwhere(outline_matrix == 1)
+    
+    if len(points) == 0:
+        return []
+
+    # IMPORTANTE: Reordenar los puntos para que sean secuenciales (vecinos)
+    # Si los puntos no están ordenados, el F8 dará saltos erráticos.
+    # Por ahora, los usaremos así, pero lo ideal es un rastreo de contorno.
+    contorno = points 
+
     directions = {
-        (0, 1): 0,    # Right
-        (1, 1): 1,    # Down-right
-        (1, 0): 2,    # Down
-        (1, -1): 3,   # Down-left
-        (0, -1): 4,   # Left
-        (-1, -1): 5,  # Up-left
-        (-1, 0): 6,   # Up
-        (-1, 1): 7    # Up-right
+        (0, 1): 0, (1, 1): 1, (1, 0): 2, (1, -1): 3,
+        (0, -1): 4, (-1, -1): 5, (-1, 0): 6, (-1, 1): 7
     }
 
     chain = []
-    
-    # Process each contour point and encode direction to next point
     for i in range(len(contorno)):
         current_point = contorno[i]
         next_point = contorno[(i + 1) % len(contorno)]
 
-        # Calculate displacement vector
-        #dy = next_point[1] - current_point[1]
-        #dx = next_point[0] - current_point[0]
-        cx, cy = current_point
-        nx, ny = next_point
-        dy  = ny - cy
+        # np.argwhere devuelve (fila, columna) -> (y, x)
+        cy, cx = current_point
+        ny, nx = next_point
+        dy = ny - cy
         dx = nx - cx
         
-
-        # Map displacement to direction code
         if (dy, dx) in directions:
             chain.append(directions[(dy, dx)])
-
-    # Rotate chain to align starting point
-    if chain:
-        chain = chain[-1:] + chain[:-1]
 
     return chain
 
