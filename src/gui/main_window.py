@@ -665,7 +665,7 @@ class MainWindow(CTkFrame):
             chain_code_raw = loaded_data.get("chain_code", [])
             algorithm_name = metadata.get("algorithm", "").upper()  # e.g., "F4", "3OT"
 
-            # BUG FIX: flatten chain_code in case it was saved as nested list
+            # Flatten chain_code in case it was saved as nested list
             # JSON may deserialize some chain formats as list-of-lists
             if chain_code_raw and isinstance(chain_code_raw[0], list):
                 chain_code = [item for sublist in chain_code_raw for item in sublist]
