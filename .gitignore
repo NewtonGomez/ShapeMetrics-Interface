@@ -1,5 +1,6 @@
 # Python
 #
+*.spec
 # Python bytecode files
 .conda/
 __pycache__/
