@@ -101,10 +101,8 @@ ShapeMetrics-Interface/
 │       ├── decoding_functions.py   # Funciones de decodificación de cadenas
 │       └── tools.py                 # Funciones utilitarias diversos
 ├── tests/                           # Suite de pruebas unitarias
-│   ├── __init__.py
 │   ├── test_ccs.py                 # Pruebas para códigos de cadena
-│   └── __pycache__/
-└── __pycache__/                     # Archivos compilados de Python
+
 
 ```
 

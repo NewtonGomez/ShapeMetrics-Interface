@@ -10,7 +10,7 @@ from src.logic import chain_codes
 from src.logic.tools import process_and_binarize
 
 # Define the path to the sample image
-TEST_IMAGE_PATH = "/Users/enriquegomez/Library/CloudStorage/OneDrive-UniversidadAutónomadeAguascalientes/Estudios de Posgrado/Segundo Semestre/Nuevos Paradigmas Tecnologicos/Tarea 1/Tarea_1_2D/samples/car-08.gif"
+TEST_IMAGE_PATH = "tests/data/car08.gif"
 
 # Create a fixture to process the image once per module execution
 @pytest.fixture(scope="module")
