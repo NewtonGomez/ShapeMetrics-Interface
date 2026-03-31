@@ -1,6 +1,7 @@
 # Python
 #
 # Python bytecode files
+.conda/
 __pycache__/
 .vscode/
 **/__pycache__/
